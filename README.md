@@ -26,7 +26,7 @@ Encontre aplicativos, consulte os pacotes instalados e acompanhe as atualizaçõ
 - Alternar entre os temas claro, escuro e do sistema. A preferência fica salva.
 - Experimentar a interface no modo de demonstração, sem alterar pacotes.
 
-A interface usa egui/eframe com OpenGL e funciona em sessões Wayland e X11. Esta é a primeira versão pública, `0.1.0`.
+A interface usa egui/eframe com OpenGL e funciona em sessões Wayland e X11. A versão atual é `0.1.1`.
 
 ## Screenshots
 
@@ -63,17 +63,16 @@ Execute o PacManager como seu usuário normal. Ele abre um terminal quando preci
 
 ### Binário da release
 
-Baixe `pacmanager-v0.1.0-linux-x86_64.tar.gz` e `SHA256SUMS` na [página da release](https://github.com/8bury/pacmanager/releases/tag/v0.1.0). Na pasta dos downloads:
+Baixe `pacmanager-v0.1.1-linux-x86_64.tar.gz` e `SHA256SUMS` na [página da release](https://github.com/8bury/pacmanager/releases/tag/v0.1.1). Na pasta dos downloads:
 
 ```sh
 sha256sum --check SHA256SUMS
-tar -xzf pacmanager-v0.1.0-linux-x86_64.tar.gz
-cd pacmanager-v0.1.0-linux-x86_64
-install -Dm755 pacmanager "$HOME/.local/bin/pacmanager"
-install -Dm644 pacmanager.desktop "$HOME/.local/share/applications/pacmanager.desktop"
+tar -xzf pacmanager-v0.1.1-linux-x86_64.tar.gz
+cd pacmanager-v0.1.1-linux-x86_64
+./install.sh
 ```
 
-Garanta que `~/.local/bin` esteja no seu `PATH`. Depois, abra pelo menu de aplicativos ou execute `pacmanager` no terminal.
+O instalador copia o binário e o ícone do PacMan para os diretórios do seu usuário e registra o aplicativo no menu do desktop. Ele usa Python 3 para configurar o caminho do executável. Para executar `pacmanager` no terminal, mantenha `~/.local/bin` no seu `PATH`.
 
 O binário é destinado a Linux x86_64 com glibc. A versão inicial foi compilada e verificada no CachyOS. Para outras arquiteturas, compile a partir do código.
 
@@ -88,7 +87,7 @@ cargo build --locked --release
 ./target/release/pacmanager
 ```
 
-Para instalar o binário compilado, use os comandos de `install` acima, substituindo `pacmanager` por `target/release/pacmanager` e `pacmanager.desktop` por `assets/pacmanager.desktop`.
+Para instalar o binário compilado e seu ícone no menu do desktop, execute `./install.sh` na raiz do projeto.
 
 ## Experimente sem alterar o sistema
 

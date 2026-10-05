@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 · 2026-10-05
+
+- Ícone do PacMan no menu do desktop e na janela do aplicativo.
+- Identificador da janela alinhado à entrada de desktop em Wayland e X11.
+- Instalador para o usuário, incluindo ícones e caminho absoluto do executável.
+- Screenshots refeitas com a interface atual.
+- Script para empacotar a release com os recursos de instalação.
+
 ## 0.1.0 · 2026-10-05
 
 Primeira versão pública do PacManager.

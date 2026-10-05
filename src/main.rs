@@ -84,9 +84,19 @@ fn main() -> eframe::Result {
         eprintln!("--demo-app e --demo-tab requerem --demo");
         std::process::exit(2);
     }
+    let icon = image::load_from_memory(include_bytes!("../assets/icons/pacmanager.png"))
+        .expect("bundled application icon must be a valid PNG")
+        .into_rgba8();
+    let icon = eframe::egui::IconData {
+        width: icon.width(),
+        height: icon.height(),
+        rgba: icon.into_raw(),
+    };
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("PacManager")
+            .with_app_id("pacmanager")
+            .with_icon(icon)
             .with_inner_size([1100.0, 760.0])
             .with_min_inner_size([800.0, 520.0]),
         ..Default::default()

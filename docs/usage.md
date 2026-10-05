@@ -49,4 +49,4 @@ O teste de integração com o AUR real é opcional e exige pacman e acesso à re
 cargo test --test aur_search -- --ignored
 ```
 
-Para adicionar ao menu do desktop depois de compilar, copie `target/release/pacmanager` para um diretório do seu PATH e `assets/pacmanager.desktop` para `~/.local/share/applications/`.
+Para adicionar ao menu do desktop depois de compilar, execute `./install.sh` na raiz do projeto. O instalador copia o binário, a entrada de desktop e os ícones do PacMan para os diretórios do seu usuário.
