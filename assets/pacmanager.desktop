@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PacManager
+Comment=Instale, remova e atualize pacotes do Arch Linux
+Exec=pacmanager
+Icon=system-software-install
+Terminal=false
+Categories=System;PackageManager;

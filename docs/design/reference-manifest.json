@@ -1,0 +1,139 @@
+[
+  {
+    "id": 1,
+    "title": "Discover e coleções",
+    "source": "https://www.techradar.com/how-to/how-to-use-the-mac-app-store",
+    "image_url": "https://cdn.mos.cms.futurecdn.net/bZE2d8HLqaXGe62dbnFWWX.png",
+    "path": "/tmp/pacmanager-app-store-references/01.png",
+    "width": 2360,
+    "height": 1578,
+    "sha256": "03040d9dfd6b9532634dd58669dd815644dd0be8bd4408175b7a05b55693e714"
+  },
+  {
+    "id": 2,
+    "title": "Busca lateral",
+    "source": "https://www.techradar.com/how-to/how-to-use-the-mac-app-store",
+    "image_url": "https://cdn.mos.cms.futurecdn.net/evpyo8PEJogftDbGTV3jSZ.jpeg",
+    "path": "/tmp/pacmanager-app-store-references/02.png",
+    "width": 2359,
+    "height": 1327,
+    "sha256": "e93cc1637e9a599b03e215ed89cda9c601c3f8c4758d7e16943816003e673451"
+  },
+  {
+    "id": 3,
+    "title": "Discover Microsoft 365",
+    "source": "https://suckless.ru/macos-app-installation/",
+    "image_url": "https://static.mebbr.ru/img/suckless/macOS_app-store_discovery.webp",
+    "path": "/tmp/pacmanager-app-store-references/03.png",
+    "width": 1920,
+    "height": 1123,
+    "sha256": "71ec2e0a318834ad74e5b587f6368303ed1e0eb959b35a56e76d8a2dd1675dd2"
+  },
+  {
+    "id": 4,
+    "title": "Categorias escuras",
+    "source": "https://www.imore.com/how-download-apps-mac-app-store",
+    "image_url": "https://cdn.mos.cms.futurecdn.net/yGsaMjEgqbcCCDUfouQ65e.jpeg",
+    "path": "/tmp/pacmanager-app-store-references/04.png",
+    "width": 2048,
+    "height": 659,
+    "sha256": "4629aece0be988e66eb8314fc411a6730f301b393a7f52ed0eed8286c3f09ed4"
+  },
+  {
+    "id": 5,
+    "title": "Atualizações Apple",
+    "source": "https://support.apple.com/ko-kr/102629",
+    "image_url": "https://cdsassets.apple.com/live/7WUAS350/images/locale/ko-kr/macos-sonoma-app-store-updates.png",
+    "path": "/tmp/pacmanager-app-store-references/05.png",
+    "width": 1400,
+    "height": 804,
+    "sha256": "51f1719208fb5a2ecf54b5ea96fe2403d3b5c10dfbd989d8e7d132b4e50b8a10"
+  },
+  {
+    "id": 6,
+    "title": "Atualizações recentes",
+    "source": "https://wearescout.com/news/2026/1/13/upgrade-to-macos-26-tahoe-when-youre-ready",
+    "image_url": "https://images.squarespace-cdn.com/content/v1/522e63f9e4b06bf96fa2d212/fd0185c9-0bd8-4e66-a9ef-07e9e2b8b051/Mac-App-Store-updates-980x570.png",
+    "path": "/tmp/pacmanager-app-store-references/06.png",
+    "width": 980,
+    "height": 570,
+    "sha256": "288b868de964c7ab8db3ce304ec4f07d25d707b2dab46a1b719986e83b4483d0"
+  },
+  {
+    "id": 7,
+    "title": "Atualizações escuras",
+    "source": "https://www.neueschweizerzeitung.ch/so-bereiten-sie-ihren-mac-fuer-macos-sonoma-vor/",
+    "image_url": "https://9to5mac.com/wp-content/uploads/sites/6/2023/09/macOS-App-Store-updates.jpg?quality=82&strip=all",
+    "path": "/tmp/pacmanager-app-store-references/07.png",
+    "width": 2000,
+    "height": 1000,
+    "sha256": "cf5cac0ac4f00ec9470788982a7860e91657c1023e39a024994c9b4e12643661"
+  },
+  {
+    "id": 8,
+    "title": "Fantastical",
+    "source": "https://www.imore.com/how-view-and-read-privacy-labels-mac-app-store",
+    "image_url": "https://cdn.mos.cms.futurecdn.net/eXjYGKfhSoRNbwY3UUtc6X.png",
+    "path": "/tmp/pacmanager-app-store-references/08.png",
+    "width": 1836,
+    "height": 824,
+    "sha256": "3588e8c2774fbe119dc505e5fc85fdc3872ab6acf1744f0f00c31288d7371a7f"
+  },
+  {
+    "id": 9,
+    "title": "Pages",
+    "source": "https://grovetech.medium.com/pages-one-of-the-best-desktop-publishing-program-for-macos-74b960d91002",
+    "image_url": "https://miro.medium.com/v2/resize%3Afit%3A1400/0%2A7ljldBmDnV5PhFUk.png",
+    "path": "/tmp/pacmanager-app-store-references/09.png",
+    "width": 1232,
+    "height": 936,
+    "sha256": "e67ca350172307311d4e6d77bd0ca3368845d02fd3f728d25e2a5a6d7a6c7e5b"
+  },
+  {
+    "id": 10,
+    "title": "Transmit",
+    "error": "<urlopen error timed out>",
+    "source": "https://www.pngkit.com/view/u2w7r5u2u2e6w7i1_transmit-in-the-mac-app-store-macos-mojave/",
+    "image_url": "https://www.pngkit.com/png/detail/235-2357033_transmit-in-the-mac-app-store-macos-mojave.png"
+  },
+  {
+    "id": 11,
+    "title": "macOS Ventura",
+    "source": "https://www.iclarified.com/87876/how-to-create-a-bootable-macos-ventura-usb-installer-video",
+    "image_url": "https://www.iclarified.com/images/tutorials/87876/424068/424068-1280.jpg",
+    "path": "/tmp/pacmanager-app-store-references/11.png",
+    "width": 1280,
+    "height": 975,
+    "sha256": "a51a6495bdf5e394d9a6f20b169ce6eb704e78384e936f51006d47d7360184e5"
+  },
+  {
+    "id": 12,
+    "title": "Firewatch",
+    "source": "https://forums.macrumors.com/threads/apples-mac-app-store-updating-with-all-new-design-inspired-by-ios.2121466/",
+    "image_url": "https://images.macrumors.com/article-new/2018/06/mojave-mac-app-store-2.jpg",
+    "path": "/tmp/pacmanager-app-store-references/12.png",
+    "width": 1142,
+    "height": 644,
+    "sha256": "7bfdb8a7ce1874c555889622e68e072c55fc153db23181559ffa2613db9055a2"
+  },
+  {
+    "id": 13,
+    "title": "Lista de atualizações",
+    "source": "https://dxbapps.com/blog/how-do-app-updates-work",
+    "image_url": "https://dxbapps.com/blogimages/macos-app-store-updates.jpg",
+    "path": "/tmp/pacmanager-app-store-references/13.png",
+    "width": 1560,
+    "height": 1026,
+    "sha256": "b207b533da0c5b2ddd5d197532ccdd24a5487b89b1271ae2514dff7a2ca947a0"
+  },
+  {
+    "id": 14,
+    "title": "Atualizações individuais",
+    "source": "https://www.tomsguide.com/how-to/how-to-update-a-mac",
+    "image_url": "https://cdn.mos.cms.futurecdn.net/Q7xYNvqZjEGZtinVHzzNXU-1200-80.png",
+    "path": "/tmp/pacmanager-app-store-references/14.png",
+    "width": 1200,
+    "height": 675,
+    "sha256": "885dff9377fefd79efba05f2c325b68451128cd6559f54f92735af7f6c10acbb"
+  }
+]
