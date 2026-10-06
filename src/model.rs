@@ -5,6 +5,12 @@ pub enum Source {
     Local,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct AurPopularity {
+    pub popularity: f64,
+    pub votes: u64,
+}
+
 #[derive(Clone, Debug)]
 pub struct Package {
     pub name: String,
@@ -15,6 +21,7 @@ pub struct Package {
     pub installed_version: Option<String>,
     pub is_app: bool,
     pub icon_path: Option<String>,
+    pub aur_popularity: Option<AurPopularity>,
 }
 
 #[derive(Clone, Debug)]
@@ -23,6 +30,7 @@ pub enum Operation {
     Remove(Package),
     Update(Package),
     Upgrade,
+    SyncRepositories,
 }
 
 #[derive(Clone, Debug, Default)]

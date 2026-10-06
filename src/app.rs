@@ -6,7 +6,7 @@ use pacmanager::{
     model::{Capabilities, Operation, Package, Source},
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::mpsc::{self, Receiver, Sender},
     time::{Duration, Instant},
 };
@@ -42,6 +42,7 @@ pub struct Store {
     catalog_error: Option<String>,
     collection: Option<String>,
     results: Vec<Package>,
+    expanded_packages: HashSet<String>,
     capabilities: Option<Capabilities>,
     sender: Sender<Message>,
     receiver: Receiver<Message>,
@@ -121,6 +122,7 @@ impl Store {
             catalog_error: None,
             collection: None,
             results: vec![],
+            expanded_packages: HashSet::new(),
             capabilities: None,
             sender,
             receiver,
@@ -258,8 +260,46 @@ impl Store {
         }
     }
     fn package_row(&mut self, ui: &mut egui::Ui, package: &Package, metadata: bool) {
+        ui.push_id(("package_row", update_key(package)), |ui| {
+            self.package_row_content(ui, package, metadata, None);
+        });
+    }
+    fn package_group_row(&mut self, ui: &mut egui::Ui, package: &Package, repositories: usize) {
+        ui.push_id(("package_group", &package.name), |ui| {
+            self.package_row_content(ui, package, true, Some(repositories));
+        });
+    }
+    fn package_repository_group(&mut self, ui: &mut egui::Ui, packages: &[Package]) {
+        let package = &packages[0];
+        let id = ui.id().with(("repository_expansion", &package.name));
+        let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(
+            ui.ctx(),
+            id,
+            self.expanded_packages.contains(&package.name),
+        );
+        self.package_group_row(ui, package, packages.len());
+        state.set_open(self.expanded_packages.contains(&package.name));
+        state.show_body_unindented(ui, |ui| {
+            for package in packages {
+                ui.indent(("repository_option", update_key(package)), |ui| {
+                    self.package_row(ui, package, true);
+                });
+            }
+        });
+    }
+    fn package_row_content(
+        &mut self,
+        ui: &mut egui::Ui,
+        package: &Package,
+        metadata: bool,
+        repositories: Option<usize>,
+    ) {
         let (rect, _) =
             ui.allocate_exact_size(egui::vec2(ui.available_width(), 80.0), egui::Sense::hover());
+        if !ui.is_rect_visible(rect) {
+            return;
+        }
+        let content_rect = rect.shrink2(egui::vec2(8.0, 0.0));
         if metadata {
             ui.painter().hline(
                 rect.x_range(),
@@ -268,8 +308,11 @@ impl Store {
             );
         }
         let action_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.right() - 88.0, rect.center().y - 14.0),
-            egui::vec2(88.0, 28.0),
+            egui::pos2(
+                content_rect.right() - if repositories.is_some() { 32.0 } else { 88.0 },
+                rect.center().y - 14.0,
+            ),
+            egui::vec2(if repositories.is_some() { 32.0 } else { 88.0 }, 28.0),
         );
         let body_rect = egui::Rect::from_min_max(
             rect.min,
@@ -277,24 +320,30 @@ impl Store {
         );
         let response = ui
             .interact(
-                body_rect,
+                if repositories.is_some() {
+                    rect
+                } else {
+                    body_rect
+                },
                 ui.id().with(("package", &package.name)),
                 egui::Sense::click(),
             )
             .on_hover_cursor(egui::CursorIcon::PointingHand);
-        if response.hovered() {
+        if ui.rect_contains_pointer(rect) {
             ui.painter()
-                .rect_filled(body_rect, 6.0, design::palette(ui.ctx()).row_hover);
+                .rect_filled(rect, 6.0, design::palette(ui.ctx()).row_hover);
         }
-        let icon_rect =
-            egui::Rect::from_min_size(rect.min + egui::vec2(0.0, 16.0), egui::vec2(48.0, 48.0));
+        let icon_rect = egui::Rect::from_min_size(
+            content_rect.min + egui::vec2(0.0, 16.0),
+            egui::vec2(48.0, 48.0),
+        );
         let mut icon_ui = ui.new_child(
             egui::UiBuilder::new()
                 .id_salt(("icon", &package.name))
                 .max_rect(icon_rect),
         );
         design::app_icon_static(&mut icon_ui, package, 48.0);
-        let text_left = rect.left() + 60.0;
+        let text_left = content_rect.left() + 60.0;
         for (line, text, size, color) in [
             (
                 0,
@@ -310,14 +359,16 @@ impl Store {
             ),
             (
                 2,
-                if self.tab == Tab::Updates {
+                if let Some(count) = repositories {
+                    format!("{count} repositórios disponíveis")
+                } else if self.tab == Tab::Updates {
                     format!(
                         "{} para {}",
                         package.installed_version.as_deref().unwrap_or("?"),
                         package.version
                     )
                 } else if metadata {
-                    source_label(&package.source)
+                    format!("{} · {}", source_label(&package.source), package.version)
                 } else {
                     String::new()
                 },
@@ -345,29 +396,65 @@ impl Store {
         }
         let installed = self.installed_versions.contains_key(&package.name)
             || package.installed_version.is_some();
-        let op = self
-            .available_update(package)
-            .cloned()
-            .map(Operation::Update)
-            .or_else(|| (!installed).then(|| Operation::Install(package.clone())));
+        let op = repositories
+            .is_none()
+            .then(|| {
+                self.available_update(package)
+                    .cloned()
+                    .map(Operation::Update)
+                    .or_else(|| (!installed).then(|| Operation::Install(package.clone())))
+            })
+            .flatten();
+        let expanded = self.expanded_packages.contains(&package.name);
         let label = match &op {
             Some(Operation::Update(_)) => "Atualizar",
             Some(_) => "Instalar",
             None => "Detalhes",
         };
-        let mut action_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .id_salt(("action", &package.name))
-                .max_rect(action_rect),
-        );
-        if design::pill(
-            &mut action_ui,
-            label,
-            op.as_ref().is_none_or(|op| self.allowed(op)),
-            false,
-        )
-        .clicked()
-        {
+        let action_clicked = if repositories.is_some() {
+            let openness = ui
+                .ctx()
+                .animate_bool_responsive(ui.id().with("disclosure_arrow"), expanded);
+            let angle = openness * std::f32::consts::FRAC_PI_2;
+            let points = [
+                egui::vec2(-3.0, -5.0),
+                egui::vec2(3.0, 0.0),
+                egui::vec2(-3.0, 5.0),
+            ]
+            .map(|p| {
+                action_rect.center()
+                    + egui::vec2(
+                        p.x * angle.cos() - p.y * angle.sin(),
+                        p.x * angle.sin() + p.y * angle.cos(),
+                    )
+            });
+            ui.painter().add(egui::Shape::line(
+                points.to_vec(),
+                egui::Stroke::new(2.0, design::palette(ui.ctx()).secondary),
+            ));
+            false // The whole group header, including the arrow, is clickable.
+        } else {
+            let mut action_ui = ui.new_child(
+                egui::UiBuilder::new()
+                    .id_salt(("action", &package.name))
+                    .max_rect(action_rect),
+            );
+            design::pill(
+                &mut action_ui,
+                label,
+                op.as_ref().is_none_or(|op| self.allowed(op)),
+                false,
+            )
+            .clicked()
+        };
+        if repositories.is_some() && (action_clicked || response.clicked()) {
+            if expanded {
+                self.expanded_packages.remove(&package.name);
+            } else {
+                self.expanded_packages.insert(package.name.clone());
+            }
+            ui.ctx().request_repaint();
+        } else if action_clicked {
             if let Some(op) = op {
                 self.confirm = Some(op);
             } else {
@@ -439,6 +526,7 @@ impl Store {
                             .contains(&query)
                 })
                 .collect();
+            pacmanager::search::rank_results(&mut self.results, &self.query, Some(&self.catalog));
             return;
         }
         if self.query.trim().is_empty() {
@@ -456,6 +544,7 @@ impl Store {
     }
     fn schedule_search(&mut self, ctx: &egui::Context, now: Instant) {
         self.selected = None;
+        self.expanded_packages.clear();
         self.search_id += 1;
         self.searching = false;
         self.results.clear();
@@ -478,7 +567,14 @@ impl Store {
                 Message::Catalog(result) => {
                     self.catalog_loading = false;
                     match result {
-                        Ok(packages) => self.catalog = packages,
+                        Ok(packages) => {
+                            self.catalog = packages;
+                            pacmanager::search::rank_results(
+                                &mut self.results,
+                                &self.query,
+                                Some(&self.catalog),
+                            );
+                        }
                         Err(error) => self.catalog_error = Some(error),
                     }
                 }
@@ -532,6 +628,11 @@ impl Store {
                                     self.installed_versions.get(&selected.name).cloned();
                             }
                             self.results = p;
+                            pacmanager::search::rank_results(
+                                &mut self.results,
+                                &self.query,
+                                Some(&self.catalog),
+                            );
                             self.error = warning;
                         }
                         Err(e) => self.error = Some(e),
@@ -658,16 +759,6 @@ impl eframe::App for Store {
                                         && self.tab == Tab::Explore
                                     {
                                         self.search(ctx);
-                                    }
-                                    if ui
-                                        .button("Buscar")
-                                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                        .clicked()
-                                    {
-                                        self.tab = Tab::Explore;
-                                        self.selected = None;
-                                        self.search(ctx);
-                                        ui.close();
                                     }
                                 });
                             });
@@ -803,6 +894,22 @@ impl eframe::App for Store {
                 }
                 ui.horizontal_wrapped(|ui| {
                     if self.tab == Tab::Updates {
+                        let sync = Operation::SyncRepositories;
+                        if ui
+                            .add_enabled(
+                                self.allowed(&sync)
+                                    && !self.installed_loading
+                                    && !self.updates_loading,
+                                egui::Button::new("Atualizar repositórios"),
+                            )
+                            .on_hover_cursor(egui::CursorIcon::PointingHand)
+                            .on_hover_text(
+                                "Sincronizar os índices e consultar as atualizações disponíveis",
+                            )
+                            .clicked()
+                        {
+                            self.confirm = Some(sync);
+                        }
                         let op = Operation::Upgrade;
                         if design::pill_sized(
                             ui,
@@ -820,7 +927,7 @@ impl eframe::App for Store {
                         ui.checkbox(&mut self.all, "Mostrar componentes do sistema")
                             .on_hover_cursor(egui::CursorIcon::PointingHand);
                     }
-                    if matches!(self.tab, Tab::Installed | Tab::Updates)
+                    if self.tab == Tab::Installed
                         && ui
                             .add_enabled(
                                 !self.running && !self.installed_loading && !self.updates_loading,
@@ -899,8 +1006,9 @@ impl eframe::App for Store {
                     })
                     .map(|(i, _)| i)
                     .collect();
+                let groups = package_groups(source, &indices);
                 ui.label(
-                    RichText::new(format!("{} pacotes", indices.len()))
+                    RichText::new(format!("{} pacotes", groups.len()))
                         .size(11.0)
                         .color(design::palette(ui.ctx()).secondary),
                 );
@@ -916,15 +1024,24 @@ impl eframe::App for Store {
                 egui::ScrollArea::vertical()
                     .id_salt(("package_list", self.tab as u8))
                     .auto_shrink([false, false])
-                    .show_rows(ui, 80.0, indices.len(), |ui, range| {
-                        for index in range {
-                            let p = match self.tab {
-                                Tab::Explore => &self.results,
-                                Tab::Installed => &self.installed,
-                                _ => &self.updates,
-                            }[indices[index]]
-                                .clone();
-                            self.package_row(ui, &p, true);
+                    .show(ui, |ui| {
+                        for group in &groups {
+                            let packages: Vec<Package> = group
+                                .iter()
+                                .map(|&index| {
+                                    match self.tab {
+                                        Tab::Explore => &self.results[index],
+                                        Tab::Installed => &self.installed[index],
+                                        _ => &self.updates[index],
+                                    }
+                                    .clone()
+                                })
+                                .collect();
+                            if packages.len() == 1 {
+                                self.package_row(ui, &packages[0], true);
+                            } else {
+                                self.package_repository_group(ui, &packages);
+                            }
                         }
                     });
             });
@@ -938,6 +1055,10 @@ impl eframe::App for Store {
                     Operation::Update(p) => { ui.heading(format!("Atualizar {}?", p.display_name)); if matches!(p.source, Source::Official(_)) { ui.label("Atualizar apenas este pacote pode causar incompatibilidades no Arch. A atualização completa é recomendada."); } else { ui.label("Revise os arquivos de construção e a transação no terminal antes de confirmar."); } },
                     Operation::Remove(p) => { ui.heading(format!("Remover {}?", p.display_name)); ui.label("O gerenciador verificará se outros pacotes dependem deste aplicativo. Confira o resumo no terminal."); },
                     Operation::Upgrade => { ui.heading("Atualizar o sistema completo?"); ui.label("O terminal atualizará os repositórios e todos os pacotes. Confira a transação e mantenha o terminal aberto até terminar."); },
+                    Operation::SyncRepositories => { ui.heading("Atualizar os repositórios?"); ui.label("O terminal sincronizará os índices sem instalar pacotes. Ao terminar, a lista de atualizações será recarregada."); ui.label("Depois da sincronização, use Atualizar tudo antes de atualizar pacotes individuais para evitar incompatibilidades no Arch."); },
+                }
+                if let Operation::Install(package) | Operation::Update(package) = &operation {
+                    ui.label(format!("{} · {}", source_label(&package.source), package.version));
                 }
                 if self.demo { ui.colored_label(design::palette(ui.ctx()).blue, "Esta prévia não executa comandos."); }
                 ui.add_space(14.0); ui.horizontal(|ui| { proceed = ui.add_enabled(self.allowed(&operation), egui::Button::new("Continuar")).on_hover_cursor(egui::CursorIcon::PointingHand).clicked(); cancel = ui.button("Cancelar").on_hover_cursor(egui::CursorIcon::PointingHand).clicked(); });
@@ -977,6 +1098,21 @@ fn update_key(package: &Package) -> String {
         Source::Local => "local".into(),
     };
     format!("{}:{source}", package.name)
+}
+// Keep each group's first search position and preserve the order of its sources.
+fn package_groups(packages: &[Package], indices: &[usize]) -> Vec<Vec<usize>> {
+    let mut positions = HashMap::new();
+    let mut groups: Vec<Vec<usize>> = Vec::new();
+    for &index in indices {
+        let position = *positions
+            .entry(packages[index].name.as_str())
+            .or_insert_with(|| {
+                groups.push(Vec::new());
+                groups.len() - 1
+            });
+        groups[position].push(index);
+    }
+    groups
 }
 fn columns(width: f32) -> usize {
     if width >= 960.0 {
@@ -1107,6 +1243,7 @@ fn fixtures() -> Vec<Package> {
         installed_version: installed.then(|| "1.0.1".into()),
         is_app: name != "glibc",
         icon_path: pacmanager::icons::resolve_app_icon(name),
+        aur_popularity: None,
     })
     .collect();
     packages
@@ -1115,6 +1252,16 @@ fn fixtures() -> Vec<Package> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn id_diagnostics(shape: &egui::Shape) -> bool {
+        match shape {
+            egui::Shape::Text(text) => {
+                text.galley.job.text.contains("First use of")
+                    || text.galley.job.text.contains("Second use of")
+            }
+            egui::Shape::Vec(shapes) => shapes.iter().any(id_diagnostics),
+            _ => false,
+        }
+    }
     fn demo() -> Store {
         let mut store = Store::state(true);
         store.capabilities = Some(Capabilities {
@@ -1123,6 +1270,206 @@ mod tests {
             terminal: true,
         });
         store
+    }
+    #[test]
+    fn repository_expansion_animates_height_in_both_directions() {
+        let ctx = egui::Context::default();
+        design::install(&ctx);
+        for theme in [egui::Theme::Dark, egui::Theme::Light] {
+            ctx.style_mut_of(theme, |style| style.animation_time = 0.2);
+        }
+        let mut store = demo();
+        let mut first = fixtures().remove(0);
+        first.icon_path = None;
+        let mut second = first.clone();
+        second.source = Source::Official("cachyos-extra-v3".into());
+        let packages = [first, second];
+        let render = |store: &mut Store, time| {
+            let mut height = 0.0;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    time: Some(time),
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(800.0, 600.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    store.package_repository_group(ui, &packages);
+                    height = ui.min_rect().height();
+                },
+            );
+            output.textures_delta.clear();
+            assert!(!output.shapes.iter().any(|s| id_diagnostics(&s.shape)));
+            height
+        };
+        let closed = render(&mut store, 0.0);
+        store.expanded_packages.insert(packages[0].name.clone());
+        render(&mut store, 0.1);
+        let opening = render(&mut store, 0.15);
+        let opened = render(&mut store, 0.4);
+        assert!(
+            closed < opening && opening < opened,
+            "{closed} < {opening} < {opened}"
+        );
+        store.expanded_packages.clear();
+        render(&mut store, 0.45);
+        let closing = render(&mut store, 0.5);
+        let reclosed = render(&mut store, 0.8);
+        assert!(reclosed < closing && closing < opened);
+        assert_eq!(closed, reclosed);
+    }
+    #[test]
+    fn hovering_the_action_highlights_the_entire_row() {
+        let ctx = egui::Context::default();
+        design::install(&ctx);
+        let mut store = demo();
+        let mut package = fixtures().remove(0);
+        package.icon_path = None;
+        let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), egui::vec2(650.0, 80.0));
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(800.0, 600.0),
+                )),
+                events: vec![egui::Event::PointerMoved(egui::pos2(
+                    rect.right() - 44.0,
+                    rect.center().y,
+                ))],
+                ..Default::default()
+            },
+            |ui| {
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));
+                store.package_row(&mut child, &package, true);
+            },
+        );
+        output.textures_delta.clear();
+        let color = design::palette(&ctx).row_hover;
+        assert!(output.shapes.iter().any(|s| matches!(&s.shape,
+            egui::Shape::Rect(shape) if shape.rect == rect && shape.fill == color)));
+    }
+    #[test]
+    fn same_name_rows_have_unique_ids_per_source() {
+        let ctx = egui::Context::default();
+        design::install(&ctx);
+        let mut store = demo();
+        let mut package = fixtures().remove(0);
+        package.icon_path = None;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            for source in [
+                Source::Official("extra".into()),
+                Source::Official("cachyos-extra-v3".into()),
+                Source::Aur,
+            ] {
+                package.source = source;
+                store.package_row(ui, &package, true);
+            }
+        });
+        output.textures_delta.clear();
+        assert!(!output.shapes.iter().any(|s| id_diagnostics(&s.shape)));
+    }
+    #[test]
+    fn groups_preserve_relevance_source_order_and_filters() {
+        let mut packages = fixtures();
+        packages.truncate(2);
+        let mut duplicate = packages[0].clone();
+        duplicate.source = Source::Official("cachyos-extra-v3".into());
+        packages.push(duplicate.clone());
+        duplicate.source = Source::Aur;
+        packages.push(duplicate);
+        assert_eq!(
+            package_groups(&packages, &[0, 1, 2, 3]),
+            vec![vec![0, 2, 3], vec![1]]
+        );
+        assert_eq!(
+            package_groups(&packages, &[2, 1, 0]),
+            vec![vec![2, 0], vec![1]]
+        );
+        assert_eq!(package_groups(&packages, &[1, 3]), vec![vec![1], vec![3]]);
+    }
+    #[test]
+    fn repository_group_expands_selects_source_and_collapses_without_id_conflicts() {
+        let ctx = egui::Context::default();
+        design::install(&ctx);
+        let mut store = demo();
+        let mut first = fixtures().remove(0);
+        first.installed_version = None;
+        first.icon_path = None;
+        first.source = Source::Official("cachyos-extra-v3".into());
+        let mut second = first.clone();
+        second.source = Source::Official("extra".into());
+        let packages = [first, second];
+        let render = |store: &mut Store, events| {
+            let mut targets = Vec::new();
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(800.0, 600.0),
+                    )),
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(
+                        egui::Rect::from_min_size(egui::pos2(20.0, 20.0), egui::vec2(650.0, 500.0)),
+                    ));
+                    child.spacing_mut().item_spacing.y = 6.0;
+                    targets.push(child.next_widget_position() + egui::vec2(100.0, 40.0));
+                    store.package_group_row(&mut child, &packages[0], 2);
+                    if store.expanded_packages.contains(&packages[0].name) {
+                        for package in &packages {
+                            child.indent(("repository_option", update_key(package)), |ui| {
+                                targets.push(
+                                    ui.next_widget_position()
+                                        + egui::vec2(ui.available_width() - 44.0, 40.0),
+                                );
+                                store.package_row(ui, package, true);
+                            });
+                        }
+                    }
+                },
+            );
+            output.textures_delta.clear();
+            assert!(!output.shapes.iter().any(|s| id_diagnostics(&s.shape)));
+            targets
+        };
+        let click = |store: &mut Store, pos| {
+            for pressed in [true, false] {
+                render(
+                    store,
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                );
+            }
+        };
+        let targets = render(&mut store, vec![]);
+        assert_eq!(targets.len(), 1);
+        click(&mut store, targets[0]);
+        assert!(store.expanded_packages.contains(&packages[0].name));
+        assert!(store.selected.is_none());
+        assert!(store.confirm.is_none());
+        let targets = render(&mut store, vec![]);
+        assert_eq!(targets.len(), 3);
+        click(&mut store, targets[2]);
+        match store.confirm.take().unwrap() {
+            Operation::Install(package) => {
+                assert_eq!(package.source, Source::Official("extra".into()))
+            }
+            _ => panic!("expected install for the chosen repository"),
+        }
+        click(&mut store, targets[0]);
+        assert!(!store.expanded_packages.contains(&packages[0].name));
+        assert_eq!(render(&mut store, vec![]).len(), 1);
     }
     #[test]
     fn explore_repeated_apps_do_not_clash_widget_ids() {
@@ -1339,6 +1686,35 @@ mod tests {
         }
     }
     #[test]
+    fn search_ranking_uses_catalog_in_either_completion_order() {
+        let ctx = egui::Context::default();
+        for catalog_first in [false, true] {
+            let mut store = demo();
+            store.query = "obs".into();
+            let mut packages = fixtures();
+            packages.truncate(2);
+            for (p, name) in packages.iter_mut().zip(["obs-alpha", "obs-studio"]) {
+                p.name = name.into();
+                p.display_name = name.into();
+                p.is_app = true;
+            }
+            let mut catalog = catalog::Catalog::default();
+            catalog.package_popularity.insert("obs-studio".into(), 20.0);
+            let catalog_message = Message::Catalog(Ok(catalog));
+            let search_message = Message::Search(store.search_id, Ok((packages, None)));
+            let messages = if catalog_first {
+                [catalog_message, search_message]
+            } else {
+                [search_message, catalog_message]
+            };
+            for message in messages {
+                store.sender.send(message).unwrap();
+                store.receive(&ctx);
+            }
+            assert_eq!(store.results[0].name, "obs-studio");
+        }
+    }
+    #[test]
     fn typing_debounces_search_and_invalidates_stale_responses() {
         let ctx = egui::Context::default();
         let mut store = demo();
@@ -1407,6 +1783,26 @@ mod tests {
         let mut store = demo();
         let package = store.demo_packages[0].clone();
         store.execute(&egui::Context::default(), Operation::Update(package));
+        assert!(!store.running);
+        assert!(store.receiver.try_recv().is_err());
+        assert!(store.status.contains("nenhuma operação"));
+    }
+    #[test]
+    fn repository_sync_respects_capabilities_and_demo_mode() {
+        let mut store = demo();
+        let op = Operation::SyncRepositories;
+        store.capabilities.as_mut().unwrap().yay = false;
+        assert!(store.allowed(&op));
+        store.running = true;
+        assert!(!store.allowed(&op));
+        store.running = false;
+        store.capabilities.as_mut().unwrap().terminal = false;
+        assert!(!store.allowed(&op));
+        store.capabilities.as_mut().unwrap().terminal = true;
+        store.capabilities.as_mut().unwrap().pacman = false;
+        assert!(!store.allowed(&op));
+        store.capabilities.as_mut().unwrap().pacman = true;
+        store.execute(&egui::Context::default(), op);
         assert!(!store.running);
         assert!(store.receiver.try_recv().is_err());
         assert!(store.status.contains("nenhuma operação"));

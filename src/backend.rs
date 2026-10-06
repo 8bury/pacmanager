@@ -215,6 +215,7 @@ fn parse_info(text: &str) -> Vec<Package> {
                     installed_version: fields.get("Version").cloned(),
                     is_app: false,
                     icon_path: None,
+                    aur_popularity: None,
                 });
             }
             fields.clear();
@@ -295,6 +296,7 @@ fn parse_search(text: &str) -> Vec<Package> {
             installed_version: None,
             is_app: known_app(name),
             icon_path: None,
+            aur_popularity: None,
         });
     }
     out
@@ -323,6 +325,10 @@ struct AurPackage {
     name: String,
     version: String,
     description: Option<String>,
+    #[serde(default)]
+    popularity: f64,
+    #[serde(default)]
+    num_votes: u64,
 }
 fn aur_search(query: &str) -> Result<Vec<Package>, String> {
     let url = format!(
@@ -355,6 +361,10 @@ fn aur_search(query: &str) -> Result<Vec<Package>, String> {
             source: Source::Aur,
             installed_version: None,
             icon_path: None,
+            aur_popularity: Some(crate::model::AurPopularity {
+                popularity: p.popularity,
+                votes: p.num_votes,
+            }),
         })
         .collect())
 }
@@ -402,6 +412,7 @@ pub fn search_with_warnings(
             p.icon_path = local.icon_path.clone().or_else(|| p.icon_path.clone());
         }
     }
+    crate::search::rank_results(&mut packages, query, None);
     Ok((packages, warning))
 }
 
@@ -428,6 +439,7 @@ fn parse_updates(text: &str, aur: bool) -> Vec<Package> {
                 installed_version: Some(old.into()),
                 is_app: known_app(name),
                 icon_path: None,
+                aur_popularity: None,
             })
         })
         .collect()
@@ -485,6 +497,7 @@ fn valid_name(name: &str) -> bool {
 }
 fn operation_command(op: &Operation) -> Result<(String, Vec<String>), String> {
     match op {
+        Operation::SyncRepositories => Ok(("sudo".into(), vec!["pacman".into(), "-Sy".into()])),
         Operation::Upgrade => {
             if available("yay") {
                 Ok(("yay".into(), vec!["-Syu".into()]))
@@ -721,6 +734,20 @@ mod tests {
         assert_eq!(p[0].description, "Web browser continuation");
     }
     #[test]
+    fn aur_reply_preserves_popularity_and_votes() {
+        let reply: AurReply = serde_json::from_str(
+            r#"{"results":[
+            {"Name":"obs-plugin","Version":"1","Description":null,"Popularity":2.5,"NumVotes":42},
+            {"Name":"obs-other","Version":"1"}
+        ]}"#,
+        )
+        .unwrap();
+        assert_eq!(reply.results[0].popularity, 2.5);
+        assert_eq!(reply.results[0].num_votes, 42);
+        assert_eq!(reply.results[1].popularity, 0.0);
+        assert_eq!(reply.results[1].num_votes, 0);
+    }
+    #[test]
     fn search_fixture() {
         let p = parse_search(
             "extra/firefox 1.2-1 [installed]\n    Web browser\n    Continued\ncore/bash 5.3\n    Shell\n",
@@ -763,6 +790,10 @@ mod tests {
     }
     #[test]
     fn transaction_recipes_preserve_prompts() {
+        assert_eq!(
+            operation_command(&Operation::SyncRepositories).unwrap(),
+            ("sudo".into(), vec!["pacman".into(), "-Sy".into()])
+        );
         let mut p = Package {
             name: "firefox".into(),
             display_name: "Firefox".into(),
@@ -772,6 +803,7 @@ mod tests {
             installed_version: None,
             is_app: true,
             icon_path: None,
+            aur_popularity: None,
         };
         assert_eq!(
             operation_command(&Operation::Install(p.clone())).unwrap(),

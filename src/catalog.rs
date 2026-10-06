@@ -14,6 +14,7 @@ pub struct Catalog {
     pub metadata: HashMap<String, AppMetadata>,
     pub warnings: Vec<String>,
     pub popularity_available: bool,
+    pub package_popularity: HashMap<String, f64>,
 }
 #[derive(Clone, Debug, Default)]
 pub struct AppMetadata {
@@ -410,6 +411,7 @@ pub fn load() -> Result<Catalog, String> {
         metadata,
         warnings,
         popularity_available,
+        package_popularity: popularity,
     })
 }
 pub fn demo(packages: Vec<Package>) -> Catalog {
@@ -451,6 +453,7 @@ pub fn demo(packages: Vec<Package>) -> Catalog {
         metadata,
         warnings: vec![],
         popularity_available: false,
+        package_popularity: HashMap::new(),
     }
 }
 #[cfg(test)]
