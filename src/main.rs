@@ -9,7 +9,7 @@ fn main() -> eframe::Result {
     }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         println!(
-            "PacManager\n\nUso: pacmanager [--theme light|dark|system] [--demo] [--demo-app NOME] [--demo-tab ABA] [--check] [--help]\n  --theme Escolhe o tema nesta execução.\n  --check Verifica o backend sem alterar pacotes.\n  --demo  Abre uma prévia com dados fictícios, sem consultar ou alterar o sistema."
+            "PacManager\n\nUso: pacmanager [--theme light|dark|system] [--demo] [--demo-app NOME] [--demo-tab ABA] [--demo-search TEXTO] [--demo-confirm] [--check] [--help]\n  --theme Escolhe o tema nesta execução.\n  --check Verifica o backend sem alterar pacotes.\n  --demo  Abre uma prévia com dados fictícios, sem consultar ou alterar o sistema."
         );
         return Ok(());
     }
@@ -73,6 +73,12 @@ fn main() -> eframe::Result {
         .position(|arg| arg == "--demo-tab")
         .and_then(|index| args.get(index + 1))
         .cloned();
+    let demo_search = args
+        .iter()
+        .position(|arg| arg == "--demo-search")
+        .and_then(|index| args.get(index + 1))
+        .cloned();
+    let demo_confirm = args.iter().any(|arg| arg == "--demo-confirm");
     if demo_tab
         .as_deref()
         .is_some_and(|tab| !["explore", "installed", "updates", "categories"].contains(&tab))
@@ -80,8 +86,9 @@ fn main() -> eframe::Result {
         eprintln!("--demo-tab espera explore, installed, updates ou categories");
         std::process::exit(2);
     }
-    if (demo_app.is_some() || demo_tab.is_some()) && !demo {
-        eprintln!("--demo-app e --demo-tab requerem --demo");
+    if (demo_app.is_some() || demo_tab.is_some() || demo_search.is_some() || demo_confirm) && !demo
+    {
+        eprintln!("--demo-app, --demo-tab, --demo-search e --demo-confirm requerem --demo");
         std::process::exit(2);
     }
     let icon = image::load_from_memory(include_bytes!("../assets/icons/pacmanager.png"))
@@ -120,8 +127,14 @@ fn main() -> eframe::Result {
             if let Some(tab) = &demo_tab {
                 store.open_demo_tab(tab);
             }
+            if let Some(query) = &demo_search {
+                store.open_demo_search(query);
+            }
             if let Some(name) = &demo_app {
                 store.open_demo_package(name);
+            }
+            if demo_confirm {
+                store.open_demo_confirmation();
             }
             Ok(Box::new(store))
         }),
