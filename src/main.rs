@@ -99,6 +99,14 @@ fn main() -> eframe::Result {
             .with_icon(icon)
             .with_inner_size([1100.0, 760.0])
             .with_min_inner_size([800.0, 520.0]),
+        // No Wayland, o compositor pode reter callbacks de frames de janelas
+        // sem foco ou ocultas. Esperar VSync em eglSwapBuffers bloqueia a
+        // thread que precisa responder aos pings do compositor, e a janela
+        // aparece como "não respondendo".
+        glow_options: eframe::egui_glow::GlowConfiguration {
+            vsync: false,
+            ..Default::default()
+        },
         ..Default::default()
     };
     eframe::run_native(
