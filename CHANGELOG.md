@@ -1,6 +1,6 @@
 # Changelog
 
-## Não lançado
+## 0.2.0 · 2026-11-14
 
 - Cabeçalhos de página com título grande, contagem e ações alinhadas à direita.
 - Seções do Explorar separadas por espaço, sem divisórias.
