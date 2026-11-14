@@ -129,6 +129,18 @@ cargo test --locked --test aur_search -- --ignored
 
 `pacmanager --check` consulta o backend e o catálogo do sistema sem instalar, remover ou atualizar pacotes.
 
+### Janelas fora da área de trabalho
+
+Capturas e testes com janela rodam numa sessão sway headless, para não abrir janelas nem roubar o foco no desktop. Instale `sway` e `grim` (e `gdb` para o teste de travamento):
+
+```sh
+bash scripts/demo-shot.sh .cache/updates.png --demo-tab updates --theme dark
+python3 scripts/test-wayland-focus.py
+bash scripts/headless.sh COMANDO   # qualquer outro comando com janela
+```
+
+`demo-shot.sh` salva só a janela do modo demo. `test-wayland-focus.py` oculta a janela no scratchpad do sway, força novos frames e falha se a thread da janela ficar presa em `eglSwapBuffers`, a causa do aviso de "não está respondendo" no Wayland. Por isso o PacManager desativa a espera de VSync do EGL.
+
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `src/app.rs` | Interface e navegação |
