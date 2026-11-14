@@ -16,6 +16,14 @@ roxmltree = "0.21"
 flate2 = "1"
 ureq = { version = "3", features = ["json"] }
 
+# Builds de desenvolvimento menores e com link mais rápido. Backtraces mantêm
+# arquivo e linha do código do projeto; dependências ficam sem debuginfo.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

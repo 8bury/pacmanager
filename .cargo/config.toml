@@ -1,0 +1,3 @@
+[build]
+# Deixa dois núcleos livres para o restante do sistema durante builds e testes.
+jobs = -2
