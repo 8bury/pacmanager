@@ -145,6 +145,29 @@ impl Store {
             self.open_package(package);
         }
     }
+    pub fn open_demo_search(&mut self, query: &str) {
+        if self.demo {
+            self.tab = Tab::Explore;
+            self.query = query.into();
+            self.aur = true;
+            self.search(&egui::Context::default());
+        }
+    }
+    /// Abre a confirmação da ação principal do aplicativo aberto ou, sem
+    /// aplicativo, a atualização completa.
+    pub fn open_demo_confirmation(&mut self) {
+        if !self.demo {
+            return;
+        }
+        self.confirm = Some(match self.selected.clone() {
+            Some(package) => match self.available_update(&package).cloned() {
+                Some(update) => Operation::Update(update),
+                None if package.installed_version.is_some() => Operation::Remove(package),
+                None => Operation::Install(package),
+            },
+            None => Operation::Upgrade,
+        });
+    }
     fn close_package(&mut self) {
         self.selected = None;
     }
@@ -179,64 +202,138 @@ impl Store {
         }
     }
     fn package_page(&mut self, ui: &mut egui::Ui, package: &Package) {
-        if design::line_icon(ui, design::NavIcon::Back, 28.0)
-            .on_hover_text("Voltar")
+        if design::back_button(ui)
+            .on_hover_text("Voltar (Esc)")
             .clicked()
         {
             self.close_package();
             return;
         }
-        ui.add_space(28.0);
+        ui.add_space(18.0);
         if let Some(error) = &self.error {
-            ui.colored_label(design::palette(ui.ctx()).error, error);
+            design::callout(ui, design::Notice::Error, error);
+            ui.add_space(10.0);
         }
         let update = self.available_update(package).cloned();
-        egui::ScrollArea::vertical().id_salt("package_page").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                design::app_icon_static(ui, package, 112.0);
-                ui.add_space(14.0);
-                ui.vertical(|ui| {
-                    ui.label(design::heading(display_name(package), 30.0));
-                    ui.label(RichText::new(tagline(package)).color(design::palette(ui.ctx()).secondary));
-                    ui.add_space(15.0);
-                    ui.horizontal(|ui| {
-                        let op = if let Some(p) = &update { Some(Operation::Update(p.clone())) } else if package.installed_version.is_none() { Some(Operation::Install(package.clone())) } else { None };
-                        if let Some(op) = op {
-                            let label = if matches!(op, Operation::Update(_)) { "Atualizar" } else { "Instalar" };
-                            if design::pill(ui, label, self.allowed(&op) && !self.updates_loading, true).clicked() { self.confirm = Some(op); }
-                        } else { ui.label(RichText::new("Instalado").color(design::palette(ui.ctx()).secondary)); }
-                        if package.installed_version.is_some() {
-                            let op = Operation::Remove(package.clone());
-                            if design::pill(ui, "Remover", self.allowed(&op), false).clicked() { self.confirm = Some(op); }
-                        }
+        let colors = design::palette(ui.ctx());
+        egui::ScrollArea::vertical()
+            .id_salt("package_page")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    design::app_icon_static(ui, package, 112.0);
+                    ui.add_space(14.0);
+                    ui.vertical(|ui| {
+                        ui.add_space(8.0);
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        ui.add(egui::Label::new(design::heading(display_name(package), 30.0)).wrap());
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(tagline(package)).size(15.0).color(colors.secondary),
+                            )
+                            .wrap(),
+                        );
+                        ui.add_space(14.0);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
+                            let op = if let Some(p) = &update {
+                                Some(Operation::Update(p.clone()))
+                            } else if package.installed_version.is_none() {
+                                Some(Operation::Install(package.clone()))
+                            } else {
+                                None
+                            };
+                            if let Some(op) = op {
+                                let label = if matches!(op, Operation::Update(_)) {
+                                    "Atualizar"
+                                } else {
+                                    "Instalar"
+                                };
+                                if design::pill_tone(
+                                    ui,
+                                    label,
+                                    self.allowed(&op) && !self.updates_loading,
+                                    design::Tone::Primary,
+                                    96.0,
+                                )
+                                .clicked()
+                                {
+                                    self.confirm = Some(op);
+                                }
+                            }
+                            if package.installed_version.is_some() {
+                                let op = Operation::Remove(package.clone());
+                                if design::pill_tone(
+                                    ui,
+                                    "Remover",
+                                    self.allowed(&op),
+                                    design::Tone::Secondary,
+                                    96.0,
+                                )
+                                .clicked()
+                                {
+                                    self.confirm = Some(op);
+                                }
+                                if update.is_none() {
+                                    ui.add_space(4.0);
+                                    ui.scope(|ui| {
+                                        ui.visuals_mut().override_text_color = Some(colors.secondary);
+                                        design::line_icon(ui, design::NavIcon::Check, 14.0);
+                                    });
+                                    ui.label(
+                                        RichText::new("Instalado").size(13.0).color(colors.secondary),
+                                    );
+                                }
+                            }
+                        });
                     });
                 });
-            });
-            ui.add_space(30.0);
-            ui.separator();
-            ui.add_space(16.0);
-            ui.horizontal_wrapped(|ui| {
-                for (label, value) in [
-                    ("PACOTE", package.name.clone()),
-                    ("INSTALADO", package.installed_version.clone().unwrap_or_else(|| "Não instalado".into())),
-                    ("DISPONÍVEL", if package.source == Source::Local && update.is_none() { "Não encontrado".into() } else { update.as_ref().unwrap_or(package).version.clone() }),
-                    ("ORIGEM", source_label(&package.source)),
-                ] {
-                    ui.vertical(|ui| { ui.set_min_width(145.0); ui.label(RichText::new(label).size(10.0).color(design::palette(ui.ctx()).secondary)); ui.label(RichText::new(value).size(14.0)); });
+                ui.add_space(28.0);
+                let available = if package.source == Source::Local && update.is_none() {
+                    "Não encontrado".into()
+                } else {
+                    update.as_ref().unwrap_or(package).version.clone()
+                };
+                metadata_card(
+                    ui,
+                    &[
+                        ("PACOTE", package.name.clone()),
+                        (
+                            "INSTALADO",
+                            package
+                                .installed_version
+                                .clone()
+                                .unwrap_or_else(|| "Não instalado".into()),
+                        ),
+                        ("DISPONÍVEL", available),
+                        ("ORIGEM", source_label(&package.source)),
+                    ],
+                );
+                if package.source == Source::Local {
+                    ui.add_space(14.0);
+                    design::callout(
+                        ui,
+                        design::Notice::Info,
+                        "Este pacote foi instalado de uma origem externa e não é atualizado por aqui.",
+                    );
                 }
+                if package.source == Source::Aur {
+                    ui.add_space(14.0);
+                    design::callout(
+                        ui,
+                        design::Notice::Warning,
+                        "Pacote da comunidade AUR, sem revisão oficial. Revise os arquivos de construção no terminal.",
+                    );
+                }
+                let related = related_indices(&self.catalog, &package.name);
+                if !related.is_empty() {
+                    ui.add_space(36.0);
+                    ui.label(design::heading("Aplicativos relacionados", 20.0));
+                    ui.add_space(6.0);
+                    self.catalog_grid(ui, &related, "related");
+                }
+                ui.add_space(24.0);
             });
-            ui.add_space(18.0); ui.separator(); ui.add_space(24.0);
-            ui.label(design::heading("Sobre o aplicativo", 23.0));
-            ui.add_space(10.0); ui.label(&package.description);
-            if package.source == Source::Local { ui.label("Este pacote foi instalado de uma origem externa."); }
-            if package.source == Source::Aur { ui.label(RichText::new("Pacote da comunidade AUR. Revise os arquivos de construção no terminal.").color(design::palette(ui.ctx()).secondary)); }
-            let related = related_indices(&self.catalog, &package.name);
-            if !related.is_empty() {
-                ui.add_space(40.0); ui.separator(); ui.add_space(24.0);
-                ui.label(design::heading("Aplicativos relacionados", 22.0));
-                self.catalog_grid(ui, &related, "related");
-            }
-        });
     }
     fn catalog_grid(&mut self, ui: &mut egui::Ui, indices: &[usize], section: &str) {
         let columns = columns(ui.available_width());
@@ -331,7 +428,7 @@ impl Store {
             .on_hover_cursor(egui::CursorIcon::PointingHand);
         if ui.rect_contains_pointer(rect) {
             ui.painter()
-                .rect_filled(rect, 6.0, design::palette(ui.ctx()).row_hover);
+                .rect_filled(rect, 10.0, design::palette(ui.ctx()).row_hover);
         }
         let icon_rect = egui::Rect::from_min_size(
             content_rect.min + egui::vec2(0.0, 16.0),
@@ -363,7 +460,7 @@ impl Store {
                     format!("{count} repositórios disponíveis")
                 } else if self.tab == Tab::Updates {
                     format!(
-                        "{} para {}",
+                        "{}  ›  {}",
                         package.installed_version.as_deref().unwrap_or("?"),
                         package.version
                     )
@@ -466,30 +563,61 @@ impl Store {
     }
     fn explore(&mut self, ui: &mut egui::Ui) {
         if let Some(error) = &self.error {
-            ui.colored_label(design::palette(ui.ctx()).error, error);
+            design::callout(ui, design::Notice::Error, error);
+            ui.add_space(10.0);
         }
         if self.catalog_loading {
             centered_loader(ui);
             return;
         }
         if let Some(error) = &self.catalog_error {
-            ui.colored_label(design::palette(ui.ctx()).error, error);
+            design::callout(ui, design::Notice::Error, error);
+            ui.add_space(10.0);
         }
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.label(design::heading(if self.catalog.popularity_available { "Populares" } else { "Aplicativos" }, 22.0)); ui.add_space(14.0);
-            let indices: Vec<usize> = (0..self.catalog.packages.len()).take(12).collect();
-            self.catalog_grid(ui, &indices, "featured");
-            ui.add_space(20.0); ui.separator(); ui.add_space(22.0);
-            for category in catalog::CATEGORY_DEFINITIONS {
-                let indices = category_indices(&self.catalog, Some(category.id));
-                if indices.is_empty() { continue; }
-                ui.horizontal(|ui| { ui.label(design::heading(category.title, 22.0)); ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if ui.link("Ver todos").on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { self.tab = Tab::Categories; self.collection = Some(category.id.into()); } }); });
+        if self.catalog.packages.is_empty() {
+            design::empty_state(
+                ui,
+                design::NavIcon::Discover,
+                "Nenhum aplicativo por aqui",
+                "Os repositórios configurados não oferecem aplicativos com metadados. Use a busca para consultar outros pacotes.",
+            );
+            return;
+        }
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let popular = if self.catalog.popularity_available {
+                    "Populares"
+                } else {
+                    "Aplicativos"
+                };
+                let indices: Vec<usize> = (0..self.catalog.packages.len()).take(12).collect();
+                if !indices.is_empty() {
+                    section_header(ui, popular, false);
+                    self.catalog_grid(ui, &indices, "featured");
+                    ui.add_space(30.0);
+                }
+                for category in catalog::CATEGORY_DEFINITIONS {
+                    let indices = category_indices(&self.catalog, Some(category.id));
+                    if indices.is_empty() {
+                        continue;
+                    }
+                    if section_header(ui, category.title, true) {
+                        self.tab = Tab::Categories;
+                        self.collection = Some(category.id.into());
+                    }
+                    self.catalog_grid(ui, &indices[..indices.len().min(12)], category.id);
+                    ui.add_space(30.0);
+                }
+                for warning in &self.catalog.warnings {
+                    ui.label(
+                        RichText::new(warning)
+                            .size(12.0)
+                            .color(design::palette(ui.ctx()).secondary),
+                    );
+                }
                 ui.add_space(12.0);
-                self.catalog_grid(ui, &indices[..indices.len().min(12)], category.id); ui.add_space(22.0); ui.separator(); ui.add_space(22.0);
-            }
-            if self.catalog.packages.is_empty() && !self.catalog_loading { ui.label("Nenhum aplicativo encontrado nos repositórios configurados. Use a busca para consultar outros pacotes."); }
-            for warning in &self.catalog.warnings { ui.label(RichText::new(warning).color(design::palette(ui.ctx()).secondary)); }
-        });
+            });
     }
     fn worker(&self, ctx: &egui::Context, task: impl FnOnce() -> Message + Send + 'static) {
         let tx = self.sender.clone();
@@ -697,118 +825,199 @@ impl eframe::App for Store {
         {
             ctx.request_repaint_after(Duration::from_millis(300));
         }
+        let search_id = egui::Id::new("sidebar_search");
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F)) {
+            ctx.memory_mut(|m| m.request_focus(search_id));
+        }
+        if self.selected.is_some()
+            && self.confirm.is_none()
+            && !ctx.memory(|m| m.focused().is_some())
+            && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+        {
+            self.close_package();
+        }
         egui::Panel::left("navigation")
             .exact_size(230.0)
+            .resizable(false)
             .frame(
                 egui::Frame::new()
                     .fill(design::palette(ctx).sidebar)
-                    .inner_margin(16.0),
+                    .inner_margin(egui::Margin {
+                        left: 14,
+                        right: 14,
+                        top: 22,
+                        bottom: 16,
+                    }),
             )
             .show(root, |ui| {
-                ui.add_space(20.0);
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    design::pacman_logo(ui, 28.0);
-                    let search_width = ui.available_width();
-                    egui::Frame::new()
-                        .fill(design::palette(ui.ctx()).search)
-                        .corner_radius(7.0)
-                        .inner_margin(7.0)
-                        .show(ui, |ui| {
-                            ui.set_width((search_width - 14.0).max(0.0));
-                            ui.horizontal(|ui| {
-                                design::line_icon(ui, design::NavIcon::Search, 15.0);
-                                let text_width =
-                                    (ui.available_width() - 16.0 - ui.spacing().item_spacing.x)
-                                        .max(0.0);
-                                let response = ui.add(
-                                    egui::TextEdit::singleline(&mut self.query)
-                                        .frame(egui::Frame::NONE)
-                                        .hint_text("Buscar")
-                                        .desired_width(text_width),
-                                );
-                                if response.changed() && self.tab == Tab::Explore {
-                                    self.schedule_search(ctx, Instant::now());
-                                }
-                                if response.lost_focus()
-                                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
-                                {
-                                    self.selected = None;
-                                    if self.tab == Tab::Explore {
-                                        self.search(ctx);
-                                    }
-                                }
-                                let filters = design::line_icon(ui, design::NavIcon::Filters, 16.0)
-                                    .on_hover_text("Filtros");
-                                filters.widget_info(|| {
-                                    egui::WidgetInfo::labeled(
-                                        egui::WidgetType::Button,
-                                        true,
-                                        "Filtros",
-                                    )
-                                });
-                                egui::Popup::menu(&filters).show(|ui| {
-                                    let enabled = self.capabilities.as_ref().is_some_and(|c| c.yay);
-                                    if ui
-                                        .add_enabled(
-                                            enabled,
-                                            egui::Checkbox::new(&mut self.aur, "Incluir AUR"),
-                                        )
-                                        .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                        .changed()
-                                        && self.tab == Tab::Explore
-                                    {
-                                        self.search(ctx);
-                                    }
-                                });
-                            });
-                        });
+                    // Grade da barra lateral: ícones centrados em 18,5 px e
+                    // textos a 38 px da margem, iguais na busca e na navegação.
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.add_space(8.5);
+                    design::pacman_logo(ui, 20.0);
+                    ui.add_space(9.5);
+                    ui.add(egui::Label::new(design::heading("PacManager", 16.0)).selectable(false));
                 });
-                ui.add_space(22.0);
+                ui.add_space(14.0);
+                let focused = ui.memory(|m| m.has_focus(search_id));
+                let colors = design::palette(ui.ctx());
+                let search_width = ui.available_width();
+                let mut filters = None;
+                let search_frame = egui::Frame::new()
+                    .fill(if focused {
+                        colors.background
+                    } else {
+                        colors.search
+                    })
+                    .stroke(if focused {
+                        egui::Stroke::new(1.5, colors.blue.gamma_multiply(0.8))
+                    } else {
+                        egui::Stroke::new(1.0, Color32::TRANSPARENT)
+                    })
+                    .corner_radius(8.0)
+                    .inner_margin(egui::Margin {
+                        left: 10,
+                        right: 7,
+                        top: 6,
+                        bottom: 6,
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width((search_width - 19.0).max(0.0));
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 12.0;
+                            ui.scope(|ui| {
+                                ui.visuals_mut().override_text_color = Some(colors.secondary);
+                                design::line_icon(ui, design::NavIcon::Search, 15.0);
+                            });
+                            let text_width =
+                                (ui.available_width() - 16.0 - ui.spacing().item_spacing.x)
+                                    .max(0.0);
+                            let response = ui.add(
+                                egui::TextEdit::singleline(&mut self.query)
+                                    .id(search_id)
+                                    .font(egui::FontId::proportional(13.0))
+                                    .frame(egui::Frame::NONE)
+                                    .hint_text(match self.tab {
+                                        Tab::Installed => "Filtrar instalados",
+                                        Tab::Updates => "Filtrar atualizações",
+                                        _ => "Buscar pacotes",
+                                    })
+                                    .desired_width(text_width),
+                            );
+                            if response.changed()
+                                && self.tab == Tab::Categories
+                                && !self.query.trim().is_empty()
+                            {
+                                self.tab = Tab::Explore;
+                            }
+                            if response.changed() && self.tab == Tab::Explore {
+                                self.schedule_search(ctx, Instant::now());
+                            }
+                            if response.lost_focus()
+                                && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            {
+                                self.selected = None;
+                                if self.tab == Tab::Explore {
+                                    self.search(ctx);
+                                }
+                            }
+                            filters = Some(design::filter_button(ui, self.aur));
+                        });
+                    });
+                if let Some(filters) = filters {
+                    let field = search_frame.response.rect;
+                    egui::Popup::menu(&filters)
+                        .anchor(field)
+                        .align(egui::RectAlign::BOTTOM_START)
+                        .gap(6.0)
+                        .show(|ui| {
+                            ui.set_width(field.width() - 12.0);
+                            ui.label(
+                                RichText::new("Buscar também em")
+                                    .size(11.0)
+                                    .color(design::palette(ui.ctx()).secondary),
+                            );
+                            let enabled = self.capabilities.as_ref().is_some_and(|c| c.yay);
+                            let mut aur = self.aur;
+                            let changed = ui
+                                .add_enabled_ui(enabled, |ui| {
+                                    design::switch_row(
+                                        ui,
+                                        &mut aur,
+                                        "AUR",
+                                        if enabled {
+                                            "Pacotes da comunidade"
+                                        } else {
+                                            "Instale o yay para usar"
+                                        },
+                                    )
+                                    .changed()
+                                })
+                                .inner;
+                            if changed {
+                                self.aur = aur;
+                                if self.tab == Tab::Explore {
+                                    self.search(ctx);
+                                }
+                            }
+                        });
+                }
+                ui.add_space(18.0);
+                ui.spacing_mut().item_spacing.y = 2.0;
                 for (tab, label, icon) in [
                     (Tab::Explore, "Explorar", design::NavIcon::Discover),
-                    (Tab::Installed, "Instalados", design::NavIcon::Installed),
                     (Tab::Categories, "Categorias", design::NavIcon::Categories),
+                    (Tab::Installed, "Instalados", design::NavIcon::Installed),
                     (Tab::Updates, "Atualizações", design::NavIcon::Updates),
                 ] {
                     let (rect, _) = ui.allocate_exact_size(
-                        egui::vec2(ui.available_width(), 36.0),
+                        egui::vec2(ui.available_width(), 34.0),
                         egui::Sense::hover(),
                     );
                     let response = ui
                         .interact(rect, ui.id().with(("nav", tab as u8)), egui::Sense::click())
                         .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    response.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::SelectableLabel,
+                            true,
+                            self.tab == tab,
+                            label,
+                        )
+                    });
                     let selected = self.tab == tab;
-                    let fill = if selected {
-                        design::palette(ui.ctx()).nav_selected
-                    } else if response.hovered() {
-                        design::palette(ui.ctx()).nav_hover
-                    } else {
-                        Color32::TRANSPARENT
-                    };
-                    ui.painter().rect_filled(rect, 6.0, fill);
-                    let mut child = ui.new_child(
-                        egui::UiBuilder::new().max_rect(rect.shrink2(egui::vec2(8.0, 8.0))),
+                    let colors = design::palette(ui.ctx());
+                    let hover = ui.ctx().animate_bool_with_time(
+                        response.id.with("nav_hover"),
+                        response.hovered(),
+                        0.12,
                     );
-                    child.visuals_mut().override_text_color = Some(if selected {
-                        design::palette(ui.ctx()).blue
+                    let fill = if selected {
+                        colors.nav_selected
                     } else {
-                        design::palette(ui.ctx()).text
-                    });
-                    child.horizontal(|ui| {
-                        design::line_icon(ui, icon, 18.0);
-                        ui.add(egui::Label::new(RichText::new(label).size(14.0)).selectable(false));
-                        if tab == Tab::Updates && !self.updates.is_empty() {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
-                                        RichText::new(self.updates.len().to_string()).size(11.0),
-                                    );
-                                },
-                            );
-                        }
-                    });
+                        Color32::TRANSPARENT.lerp_to_gamma(colors.nav_hover, hover)
+                    };
+                    ui.painter().rect_filled(rect, 8.0, fill);
+                    let mut child = ui.new_child(
+                        egui::UiBuilder::new()
+                            .max_rect(rect.shrink2(egui::vec2(10.0, 8.0)))
+                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                    );
+                    child.visuals_mut().override_text_color =
+                        Some(if selected { colors.blue } else { colors.text });
+                    child.spacing_mut().item_spacing.x = 11.0;
+                    design::line_icon(&mut child, icon, 17.0);
+                    let text = RichText::new(label).size(14.0);
+                    child.add(
+                        egui::Label::new(if selected { text.strong() } else { text })
+                            .selectable(false),
+                    );
+                    if tab == Tab::Updates && !self.updates.is_empty() {
+                        child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            design::badge(ui, &self.updates.len().to_string(), true);
+                        });
+                    }
                     if response.clicked() {
                         let changed = self.tab != tab;
                         self.tab = tab;
@@ -822,49 +1031,78 @@ impl eframe::App for Store {
                     }
                 }
                 let footer = egui::Rect::from_min_size(
-                    egui::pos2(ui.max_rect().left(), ui.max_rect().bottom() - 40.0),
-                    egui::vec2(ui.available_width(), 30.0),
+                    egui::pos2(ui.max_rect().left(), ui.max_rect().bottom() - 34.0),
+                    egui::vec2(ui.max_rect().width(), 34.0),
                 );
                 let mut footer_ui = ui.new_child(egui::UiBuilder::new().max_rect(footer));
-                footer_ui
-                    .menu_button("Aparência", |ui| {
+                let appearance = design::sidebar_button(
+                    &mut footer_ui,
+                    design::NavIcon::Appearance,
+                    "Aparência",
+                );
+                egui::Popup::menu(&appearance)
+                    .align(egui::RectAlign::TOP_START)
+                    .gap(6.0)
+                    .show(|ui| {
+                        ui.set_width(180.0);
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        let current = ctx.options(|o| o.theme_preference);
                         for (label, theme) in [
                             ("Claro", egui::ThemePreference::Light),
                             ("Escuro", egui::ThemePreference::Dark),
-                            ("Sistema", egui::ThemePreference::System),
+                            ("Igual ao sistema", egui::ThemePreference::System),
                         ] {
-                            if ui
-                                .button(label)
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .clicked()
-                            {
-                                if let Err(error) = design::set_theme(ctx, theme, true) {
+                            if design::menu_item(ui, label, current == theme).clicked() {
+                                if let Err(error) = design::set_theme(ctx, theme, !self.demo) {
                                     self.error = Some(error);
                                 }
                                 ui.close();
                             }
                         }
-                    })
-                    .response
-                    .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    });
             });
         if !self.status.is_empty() || self.running {
             egui::Panel::bottom("status")
+                .resizable(false)
                 .frame(
                     egui::Frame::new()
-                        .fill(design::palette(ctx).background)
-                        .inner_margin(8.0),
+                        .fill(design::palette(ctx).sidebar)
+                        .inner_margin(egui::Margin::symmetric(20, 9)),
                 )
                 .show(root, |ui| {
                     ui.horizontal(|ui| {
                         if self.running {
-                            ui.spinner();
+                            ui.add(egui::Spinner::new().size(14.0));
                         }
-                        ui.label(
-                            RichText::new(&self.status)
-                                .size(11.0)
-                                .color(design::palette(ui.ctx()).secondary),
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(&self.status)
+                                    .size(12.0)
+                                    .color(design::palette(ui.ctx()).secondary),
+                            )
+                            .truncate(),
                         );
+                        if !self.running {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new("Dispensar")
+                                                    .size(12.0)
+                                                    .color(design::palette(ui.ctx()).blue),
+                                            )
+                                            .frame(false),
+                                        )
+                                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                        .clicked()
+                                    {
+                                        self.status.clear();
+                                    }
+                                },
+                            );
+                        }
                     });
                 });
         }
@@ -872,7 +1110,12 @@ impl eframe::App for Store {
             .frame(
                 egui::Frame::new()
                     .fill(design::palette(ctx).background)
-                    .inner_margin(28.0),
+                    .inner_margin(egui::Margin {
+                        left: 32,
+                        right: 32,
+                        top: 26,
+                        bottom: 0,
+                    }),
             )
             .show(root, |ui| {
                 if let Some(package) = self.selected.clone() {
@@ -880,6 +1123,41 @@ impl eframe::App for Store {
                     return;
                 }
                 let browsing = self.tab == Tab::Explore && self.query.trim().is_empty();
+                let loading = match self.tab {
+                    Tab::Explore => self.searching || self.search_due.is_some(),
+                    Tab::Installed => self.installed_loading,
+                    Tab::Updates => self.updates_loading,
+                    Tab::Categories => self.catalog_loading,
+                };
+                let query = self.query.to_lowercase();
+                let groups = if matches!(self.tab, Tab::Categories) || browsing {
+                    Vec::new()
+                } else {
+                    let source = match self.tab {
+                        Tab::Explore => &self.results,
+                        Tab::Installed => &self.installed,
+                        _ => &self.updates,
+                    };
+                    let indices: Vec<usize> = source
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, p)| {
+                            (self.tab != Tab::Installed || self.all || p.is_app)
+                                && (self.tab == Tab::Explore
+                                    || query.is_empty()
+                                    || format!("{} {} {}", p.name, p.display_name, p.description)
+                                        .to_lowercase()
+                                        .contains(&query))
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+                    package_groups(source, &indices)
+                };
+                let category_title = catalog::CATEGORY_DEFINITIONS
+                    .iter()
+                    .find(|c| self.collection.as_deref() == Some(c.id))
+                    .map_or("Todos os aplicativos", |c| c.title);
+                let filtered = !query.is_empty();
                 let title = match self.tab {
                     Tab::Explore if browsing => "Explorar",
                     Tab::Explore => "Resultados da busca",
@@ -887,138 +1165,176 @@ impl eframe::App for Store {
                     Tab::Updates => "Atualizações",
                     Tab::Categories => "Categorias",
                 };
-                tab_header(ui, title);
-                if browsing {
-                    self.explore(ui);
-                    return;
-                }
-                ui.horizontal_wrapped(|ui| {
-                    if self.tab == Tab::Updates {
-                        let sync = Operation::SyncRepositories;
-                        if ui
-                            .add_enabled(
-                                self.allowed(&sync)
-                                    && !self.installed_loading
-                                    && !self.updates_loading,
-                                egui::Button::new("Atualizar repositórios"),
-                            )
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .on_hover_text(
-                                "Sincronizar os índices e consultar as atualizações disponíveis",
-                            )
-                            .clicked()
-                        {
-                            self.confirm = Some(sync);
-                        }
+                let n = groups.len();
+                let subtitle = match self.tab {
+                    Tab::Explore if browsing => {
+                        "Aplicativos disponíveis nos seus repositórios".to_owned()
+                    }
+                    Tab::Explore if loading => format!("Buscando “{}”…", self.query.trim()),
+                    Tab::Explore => format!(
+                        "{} para “{}”",
+                        plural(n, "resultado", "resultados"),
+                        self.query.trim()
+                    ),
+                    _ if loading => "Carregando…".to_owned(),
+                    Tab::Installed if self.all => plural(n, "pacote", "pacotes"),
+                    Tab::Installed => plural(n, "aplicativo", "aplicativos"),
+                    Tab::Updates if n == 0 && !filtered => "Tudo em dia".to_owned(),
+                    Tab::Updates if n == 1 => "1 atualização disponível".to_owned(),
+                    Tab::Updates => format!("{n} atualizações disponíveis"),
+                    Tab::Categories => format!(
+                        "{} · {}",
+                        category_title,
+                        plural(
+                            category_indices(&self.catalog, self.collection.as_deref()).len(),
+                            "aplicativo",
+                            "aplicativos"
+                        )
+                    ),
+                };
+                let tab = self.tab;
+                page_header(ui, title, &subtitle, |ui| match tab {
+                    Tab::Updates => {
                         let op = Operation::Upgrade;
-                        if design::pill_sized(
+                        if design::pill_tone(
                             ui,
                             "Atualizar tudo",
-                            self.allowed(&op) && !self.updates_loading,
-                            true,
-                            116.0,
+                            self.allowed(&op) && !self.updates_loading && !self.updates.is_empty(),
+                            design::Tone::Primary,
+                            110.0,
                         )
                         .clicked()
                         {
                             self.confirm = Some(op);
                         }
+                        let sync = Operation::SyncRepositories;
+                        if design::pill_tone(
+                            ui,
+                            "Atualizar repositórios",
+                            self.allowed(&sync) && !self.installed_loading && !self.updates_loading,
+                            design::Tone::Secondary,
+                            0.0,
+                        )
+                        .on_hover_text(
+                            "Sincronizar os índices e consultar as atualizações disponíveis",
+                        )
+                        .clicked()
+                        {
+                            self.confirm = Some(sync);
+                        }
                     }
-                    if self.tab == Tab::Installed {
-                        ui.checkbox(&mut self.all, "Mostrar componentes do sistema")
-                            .on_hover_cursor(egui::CursorIcon::PointingHand);
+                    Tab::Installed => {
+                        if design::pill_tone(
+                            ui,
+                            "Recarregar",
+                            !self.running && !self.installed_loading && !self.updates_loading,
+                            design::Tone::Secondary,
+                            0.0,
+                        )
+                        .clicked()
+                        {
+                            self.refresh(ctx);
+                        }
+                        ui.add_space(8.0);
+                        design::toggle(ui, &mut self.all, "Pacotes do sistema")
+                            .on_hover_text("Mostrar também bibliotecas e componentes do sistema");
                     }
-                    if self.tab == Tab::Installed
-                        && ui
-                            .add_enabled(
-                                !self.running && !self.installed_loading && !self.updates_loading,
-                                egui::Button::new("Recarregar"),
-                            )
-                            .on_hover_cursor(egui::CursorIcon::PointingHand)
-                            .clicked()
-                    {
-                        self.refresh(ctx);
-                    }
-                    if self.tab == Tab::Categories {
+                    _ => {}
+                });
+                if browsing {
+                    self.explore(ui);
+                    return;
+                }
+                if self.tab == Tab::Categories {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+                        if design::chip(ui, "Todos", self.collection.is_none()).clicked() {
+                            self.collection = None;
+                        }
                         for collection in catalog::CATEGORY_DEFINITIONS {
                             if category_indices(&self.catalog, Some(collection.id)).is_empty() {
                                 continue;
                             }
-                            if ui
-                                .selectable_label(
-                                    self.collection.as_deref() == Some(collection.id),
-                                    collection.title,
-                                )
-                                .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                .clicked()
+                            if design::chip(
+                                ui,
+                                collection.title,
+                                self.collection.as_deref() == Some(collection.id),
+                            )
+                            .clicked()
                             {
                                 self.collection = Some(collection.id.into());
                             }
                         }
-                    }
-                });
-                if let Some(error) = &self.error {
-                    ui.colored_label(design::palette(ui.ctx()).error, error);
+                    });
+                    ui.add_space(14.0);
                 }
-                ui.add_space(14.0);
-                ui.separator();
-                ui.add_space(16.0);
-                let loading = match self.tab {
-                    Tab::Explore => self.searching,
-                    Tab::Installed => self.installed_loading,
-                    Tab::Updates => self.updates_loading,
-                    Tab::Categories => self.catalog_loading,
-                };
-                if loading || (self.tab == Tab::Explore && self.search_due.is_some()) {
+                if let Some(error) = &self.error {
+                    design::callout(ui, design::Notice::Error, error);
+                    ui.add_space(10.0);
+                }
+                if loading {
                     centered_loader(ui);
                     return;
                 }
                 if self.tab == Tab::Categories {
                     if let Some(error) = &self.catalog_error {
-                        ui.colored_label(design::palette(ui.ctx()).error, error);
+                        design::callout(ui, design::Notice::Error, error);
                     }
                     let indices = category_indices(&self.catalog, self.collection.as_deref());
+                    if indices.is_empty() {
+                        design::empty_state(
+                            ui,
+                            design::NavIcon::Categories,
+                            "Nenhum aplicativo nesta categoria",
+                            "Os repositórios configurados não oferecem aplicativos aqui.",
+                        );
+                        return;
+                    }
                     let columns = columns(ui.available_width());
                     let rows = indices.len().div_ceil(columns);
-                    egui::ScrollArea::vertical().show_rows(ui, 80.0, rows, |ui, range| {
-                        let start = range.start * columns;
-                        let end = (range.end * columns).min(indices.len());
-                        self.catalog_grid(ui, &indices[start..end], "category");
-                    });
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show_rows(ui, 80.0, rows, |ui, range| {
+                            let start = range.start * columns;
+                            let end = (range.end * columns).min(indices.len());
+                            self.catalog_grid(ui, &indices[start..end], "category");
+                        });
                     return;
                 }
-                let source = match self.tab {
-                    Tab::Explore => &self.results,
-                    Tab::Installed => &self.installed,
-                    Tab::Updates => &self.updates,
-                    Tab::Categories => unreachable!(),
-                };
-                let query = self.query.to_lowercase();
-                let indices: Vec<usize> = source
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, p)| {
-                        (self.tab != Tab::Installed || self.all || p.is_app)
-                            && (self.tab == Tab::Explore
-                                || query.is_empty()
-                                || format!("{} {} {}", p.name, p.display_name, p.description)
-                                    .to_lowercase()
-                                    .contains(&query))
-                    })
-                    .map(|(i, _)| i)
-                    .collect();
-                let groups = package_groups(source, &indices);
-                ui.label(
-                    RichText::new(format!("{} pacotes", groups.len()))
-                        .size(11.0)
-                        .color(design::palette(ui.ctx()).secondary),
-                );
-                ui.add_space(12.0);
-                if indices.is_empty() && !loading {
-                    ui.label(if self.tab == Tab::Updates && self.error.is_none() {
-                        "Nenhuma atualização disponível."
-                    } else {
-                        "Nenhum pacote encontrado."
-                    });
+                if groups.is_empty() {
+                    let (icon, title, message) = match self.tab {
+                        Tab::Explore => (
+                            design::NavIcon::Search,
+                            "Nada encontrado",
+                            if self.aur {
+                                "Tente outro nome ou uma palavra da descrição."
+                            } else {
+                                "Tente outro nome ou inclua o AUR nos filtros da busca."
+                            },
+                        ),
+                        _ if filtered => (
+                            design::NavIcon::Search,
+                            "Nenhum resultado",
+                            "Nenhum pacote desta lista corresponde ao filtro.",
+                        ),
+                        Tab::Updates if self.error.is_none() => (
+                            design::NavIcon::Check,
+                            "Tudo em dia",
+                            "Seus pacotes estão nas versões mais recentes. Atualize os repositórios para verificar de novo.",
+                        ),
+                        Tab::Updates => (
+                            design::NavIcon::Updates,
+                            "Não foi possível verificar",
+                            "Confira o aviso acima e tente atualizar os repositórios.",
+                        ),
+                        _ => (
+                            design::NavIcon::Installed,
+                            "Nenhum aplicativo instalado",
+                            "Ative Pacotes do sistema para ver todos os pacotes.",
+                        ),
+                    };
+                    design::empty_state(ui, icon, title, message);
+                    return;
                 }
                 ui.spacing_mut().item_spacing.y = 6.0;
                 egui::ScrollArea::vertical()
@@ -1043,46 +1359,270 @@ impl eframe::App for Store {
                                 self.package_repository_group(ui, &packages);
                             }
                         }
+                        ui.add_space(20.0);
                     });
             });
         if let Some(operation) = self.confirm.clone() {
-            let mut open = true;
+            let colors = design::palette(ctx);
+            let dark = ctx.theme() == egui::Theme::Dark;
             let mut proceed = false;
             let mut cancel = false;
-            egui::Window::new("Confirmar operação").open(&mut open).collapsible(false).resizable(false).default_width(430.0).show(ctx, |ui| {
-                match &operation {
-                    Operation::Install(p) => { ui.heading(format!("Instalar {}?", p.display_name)); ui.label("O terminal mostrará os pacotes e as dependências antes da confirmação."); if p.source == Source::Aur { ui.label("Revise o PKGBUILD e os arquivos do AUR antes de continuar."); } },
-                    Operation::Update(p) => { ui.heading(format!("Atualizar {}?", p.display_name)); if matches!(p.source, Source::Official(_)) { ui.label("Atualizar apenas este pacote pode causar incompatibilidades no Arch. A atualização completa é recomendada."); } else { ui.label("Revise os arquivos de construção e a transação no terminal antes de confirmar."); } },
-                    Operation::Remove(p) => { ui.heading(format!("Remover {}?", p.display_name)); ui.label("O gerenciador verificará se outros pacotes dependem deste aplicativo. Confira o resumo no terminal."); },
-                    Operation::Upgrade => { ui.heading("Atualizar o sistema completo?"); ui.label("O terminal atualizará os repositórios e todos os pacotes. Confira a transação e mantenha o terminal aberto até terminar."); },
-                    Operation::SyncRepositories => { ui.heading("Atualizar os repositórios?"); ui.label("O terminal sincronizará os índices sem instalar pacotes. Ao terminar, a lista de atualizações será recarregada."); ui.label("Depois da sincronização, use Atualizar tudo antes de atualizar pacotes individuais para evitar incompatibilidades no Arch."); },
-                }
-                if let Operation::Install(package) | Operation::Update(package) = &operation {
-                    ui.label(format!("{} · {}", source_label(&package.source), package.version));
-                }
-                if self.demo { ui.colored_label(design::palette(ui.ctx()).blue, "Esta prévia não executa comandos."); }
-                ui.add_space(14.0); ui.horizontal(|ui| { proceed = ui.add_enabled(self.allowed(&operation), egui::Button::new("Continuar")).on_hover_cursor(egui::CursorIcon::PointingHand).clicked(); cancel = ui.button("Cancelar").on_hover_cursor(egui::CursorIcon::PointingHand).clicked(); });
-            });
+            let modal = egui::Modal::new(egui::Id::new("confirm_operation"))
+                .backdrop_color(Color32::from_black_alpha(if dark { 150 } else { 80 }))
+                .frame(
+                    egui::Frame::new()
+                        .fill(colors.background)
+                        .stroke(egui::Stroke::new(1.0, colors.separator))
+                        .corner_radius(16)
+                        .inner_margin(24)
+                        .shadow(ctx.global_style().visuals.window_shadow),
+                )
+                .show(ctx, |ui| {
+                    ui.set_width(380.0);
+                    ui.spacing_mut().item_spacing.y = 8.0;
+                    let text = confirmation(&operation);
+                    match &operation {
+                        Operation::Install(p) | Operation::Update(p) | Operation::Remove(p) => {
+                            design::app_icon_static(ui, p, 56.0);
+                        }
+                        Operation::Upgrade | Operation::SyncRepositories => {
+                            let (rect, _) = ui
+                                .allocate_exact_size(egui::vec2(56.0, 56.0), egui::Sense::hover());
+                            ui.painter().rect_filled(rect, 14.0, colors.accent_soft);
+                            ui.scope_builder(
+                                egui::UiBuilder::new().max_rect(egui::Rect::from_center_size(
+                                    rect.center(),
+                                    egui::vec2(26.0, 26.0),
+                                )),
+                                |ui| {
+                                    ui.visuals_mut().override_text_color = Some(colors.blue);
+                                    design::line_icon(ui, design::NavIcon::Updates, 26.0);
+                                },
+                            );
+                            ui.add_space(6.0);
+                        }
+                    }
+                    ui.add_space(4.0);
+                    ui.add(egui::Label::new(design::heading(text.title, 19.0)).wrap());
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(text.body).size(13.0).color(colors.secondary),
+                        )
+                        .wrap(),
+                    );
+                    if let Operation::Install(package) | Operation::Update(package) = &operation {
+                        ui.label(
+                            RichText::new(format!(
+                                "{} · versão {}",
+                                source_label(&package.source),
+                                package.version
+                            ))
+                            .size(12.0)
+                            .color(colors.secondary),
+                        );
+                    }
+                    if let Some(note) = text.note {
+                        ui.add_space(2.0);
+                        design::callout(ui, design::Notice::Warning, note);
+                    }
+                    if self.demo {
+                        design::callout(
+                            ui,
+                            design::Notice::Info,
+                            "Esta prévia não executa comandos.",
+                        );
+                    }
+                    ui.add_space(10.0);
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(ui.available_width(), 28.0),
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
+                            proceed = design::pill_tone(
+                                ui,
+                                text.action,
+                                self.allowed(&operation),
+                                text.tone,
+                                96.0,
+                            )
+                            .clicked();
+                            cancel = design::pill_tone(
+                                ui,
+                                "Cancelar",
+                                true,
+                                design::Tone::Secondary,
+                                96.0,
+                            )
+                            .clicked();
+                        },
+                    );
+                });
             if proceed {
                 self.confirm = None;
                 self.execute(ctx, operation);
-            } else if !open || cancel {
+            } else if cancel || modal.should_close() {
                 self.confirm = None;
             }
         }
     }
 }
-fn tab_header(ui: &mut egui::Ui, title: &str) -> egui::Rect {
+struct Confirmation {
+    title: String,
+    body: &'static str,
+    note: Option<&'static str>,
+    action: &'static str,
+    tone: design::Tone,
+}
+fn confirmation(operation: &Operation) -> Confirmation {
+    let primary = design::Tone::Primary;
+    match operation {
+        Operation::Install(p) => Confirmation {
+            title: format!("Instalar {}?", p.display_name),
+            body: "O terminal mostrará os pacotes e as dependências antes da confirmação.",
+            note: (p.source == Source::Aur)
+                .then_some("Revise o PKGBUILD e os arquivos do AUR antes de continuar."),
+            action: "Instalar",
+            tone: primary,
+        },
+        Operation::Update(p) => {
+            let official = matches!(p.source, Source::Official(_));
+            Confirmation {
+                title: format!("Atualizar {}?", p.display_name),
+                body: if official {
+                    "O terminal mostrará a transação antes da confirmação."
+                } else {
+                    "Revise os arquivos de construção e a transação no terminal antes de confirmar."
+                },
+                note: official.then_some(
+                    "Atualizar apenas este pacote pode causar incompatibilidades no Arch. A atualização completa é recomendada.",
+                ),
+                action: "Atualizar",
+                tone: primary,
+            }
+        }
+        Operation::Remove(p) => Confirmation {
+            title: format!("Remover {}?", p.display_name),
+            body: "O gerenciador verificará se outros pacotes dependem deste aplicativo. Confira o resumo no terminal.",
+            note: None,
+            action: "Remover",
+            tone: design::Tone::Danger,
+        },
+        Operation::Upgrade => Confirmation {
+            title: "Atualizar o sistema completo?".into(),
+            body: "O terminal atualizará os repositórios e todos os pacotes. Confira a transação e mantenha o terminal aberto até terminar.",
+            note: None,
+            action: "Atualizar tudo",
+            tone: primary,
+        },
+        Operation::SyncRepositories => Confirmation {
+            title: "Atualizar os repositórios?".into(),
+            body: "O terminal sincronizará os índices sem instalar pacotes. Ao terminar, a lista de atualizações será recarregada.",
+            note: Some(
+                "Depois da sincronização, use Atualizar tudo antes de atualizar pacotes individuais para evitar incompatibilidades no Arch.",
+            ),
+            action: "Sincronizar",
+            tone: primary,
+        },
+    }
+}
+fn plural(count: usize, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+/// Título de seção com link opcional "Ver todos"; devolve se o link foi clicado.
+fn section_header(ui: &mut egui::Ui, title: &str, see_all: bool) -> bool {
+    let mut clicked = false;
+    ui.horizontal(|ui| {
+        ui.label(design::heading(title, 20.0));
+        if see_all {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                clicked = ui
+                    .link(
+                        RichText::new("Ver todos")
+                            .size(13.0)
+                            .color(design::palette(ui.ctx()).blue),
+                    )
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .clicked();
+            });
+        }
+    });
+    ui.add_space(4.0);
+    clicked
+}
+/// Faixa de metadados em colunas iguais separadas por divisórias finas.
+fn metadata_card(ui: &mut egui::Ui, items: &[(&str, String)]) {
+    let colors = design::palette(ui.ctx());
     let (rect, _) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::hover());
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        title,
-        egui::FontId::proportional(13.0),
-        design::palette(ui.ctx()).text,
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), 68.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 12.0, colors.card);
+    let width = rect.width() / items.len() as f32;
+    for (index, (label, value)) in items.iter().enumerate() {
+        let column = egui::Rect::from_min_size(
+            rect.min + egui::vec2(index as f32 * width, 0.0),
+            egui::vec2(width, rect.height()),
+        );
+        if index > 0 {
+            ui.painter().vline(
+                column.left(),
+                column.y_range().shrink(16.0),
+                egui::Stroke::new(1.0, colors.separator),
+            );
+        }
+        let mut cell = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(column.shrink2(egui::vec2(16.0, 14.0)))
+                .layout(egui::Layout::top_down(egui::Align::Min)),
+        );
+        cell.spacing_mut().item_spacing.y = 3.0;
+        cell.add(
+            egui::Label::new(
+                RichText::new(*label)
+                    .size(10.5)
+                    .strong()
+                    .color(colors.secondary),
+            )
+            .selectable(false),
+        );
+        cell.add(egui::Label::new(RichText::new(value).size(14.0)).truncate())
+            .on_hover_text(value);
+    }
+}
+const HEADER_HEIGHT: f32 = 56.0;
+/// Título grande à esquerda, subtítulo e ações alinhadas à direita.
+fn page_header(
+    ui: &mut egui::Ui,
+    title: &str,
+    subtitle: &str,
+    actions: impl FnOnce(&mut egui::Ui),
+) -> egui::Rect {
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), HEADER_HEIGHT),
+        egui::Sense::hover(),
     );
-    ui.add_space(28.0);
+    let mut text = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::top_down(egui::Align::Min)),
+    );
+    text.spacing_mut().item_spacing.y = 2.0;
+    text.add(egui::Label::new(design::heading(title, 28.0)).selectable(false));
+    text.add(
+        egui::Label::new(
+            RichText::new(subtitle)
+                .size(13.0)
+                .color(design::palette(ui.ctx()).secondary),
+        )
+        .truncate()
+        .selectable(false),
+    );
+    let mut actions_ui = ui.new_child(
+        egui::UiBuilder::new()
+            .max_rect(rect)
+            .layout(egui::Layout::right_to_left(egui::Align::Center)),
+    );
+    actions_ui.spacing_mut().item_spacing.x = 8.0;
+    actions(&mut actions_ui);
+    ui.add_space(18.0);
     rect
 }
 fn centered_loader(ui: &mut egui::Ui) -> egui::Rect {
@@ -1667,10 +2207,10 @@ mod tests {
                     let bounds =
                         egui::Rect::from_min_size(egui::pos2(30.0, 40.0), egui::vec2(width, 500.0));
                     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(bounds));
-                    let header = tab_header(&mut child, title);
+                    let header = page_header(&mut child, title, "subtítulo", |_| {});
                     assert_eq!(header.width(), width);
-                    assert_eq!(header.height(), 18.0);
-                    assert_eq!(header.center().x, bounds.center().x);
+                    assert_eq!(header.height(), HEADER_HEIGHT);
+                    assert_eq!(header.left(), bounds.left());
                     if let Some(previous) = baseline {
                         assert_eq!(header, previous);
                     }
@@ -1777,6 +2317,34 @@ mod tests {
         assert!(store.tab == Tab::Installed);
         assert_eq!(store.query, "fire");
         assert!(store.all && store.aur);
+    }
+    #[test]
+    fn confirmations_name_the_action_and_flag_destructive_ones() {
+        let package = fixtures().remove(0);
+        let remove = confirmation(&Operation::Remove(package.clone()));
+        assert_eq!(remove.action, "Remover");
+        assert!(remove.tone == design::Tone::Danger);
+        let mut aur = package.clone();
+        aur.source = Source::Aur;
+        assert!(confirmation(&Operation::Install(aur)).note.is_some());
+        assert!(
+            confirmation(&Operation::Install(package.clone()))
+                .note
+                .is_none()
+        );
+        assert!(confirmation(&Operation::Update(package)).note.is_some());
+        assert_eq!(confirmation(&Operation::Upgrade).action, "Atualizar tudo");
+        assert_eq!(plural(1, "item", "itens"), "1 item");
+        assert_eq!(plural(3, "item", "itens"), "3 itens");
+    }
+    #[test]
+    fn demo_confirmation_picks_the_primary_action() {
+        let mut store = demo();
+        store.open_demo_confirmation();
+        assert!(matches!(store.confirm.take(), Some(Operation::Upgrade)));
+        store.open_demo_package("gimp");
+        store.open_demo_confirmation();
+        assert!(matches!(store.confirm.take(), Some(Operation::Install(_))));
     }
     #[test]
     fn demo_update_never_dispatches_backend() {

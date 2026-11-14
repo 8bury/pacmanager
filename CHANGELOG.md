@@ -1,5 +1,21 @@
 # Changelog
 
+## Não lançado
+
+- Cabeçalhos de página com título grande, contagem e ações alinhadas à direita.
+- Seções do Explorar separadas por espaço, sem divisórias.
+- Ícones genéricos com a inicial do aplicativo sobre uma cor própria.
+- Confirmação centralizada com fundo escurecido, ação nomeada e remoção em vermelho.
+- Página do aplicativo sem descrição repetida, com metadados em cartão e avisos destacados.
+- Chips de categoria com opção Todos, interruptor de pacotes do sistema e botões consistentes.
+- Estados vazios ilustrados, avisos de erro em faixa e barra de status dispensável.
+- Barra lateral com nome do app, busca com foco visível, contador em cápsula,
+  ícone próprio para Atualizações e tema escolhido num menu de Aparência.
+- Filtro da busca alinhado ao campo, com indicação quando o AUR está incluído.
+- Atalhos Ctrl+F para buscar e Esc para voltar da página do aplicativo.
+- Animações suaves de hover em botões, navegação e destaque.
+- Opções `--demo-search` e `--demo-confirm` para revisar mais telas no modo demo.
+
 ## 0.1.1 · 2026-10-05
 
 - Ícone do PacMan no menu do desktop e na janela do aplicativo.

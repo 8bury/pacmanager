@@ -96,7 +96,11 @@ pacmanager --demo
 pacmanager --demo --theme dark
 pacmanager --demo --demo-app firefox
 pacmanager --demo --demo-tab updates
+pacmanager --demo --demo-search editor
+pacmanager --demo --demo-app gimp --demo-confirm
 ```
+
+`--demo-confirm` abre a confirmação da ação principal do aplicativo aberto ou, sem aplicativo, a da atualização completa.
 
 Ao executar pelo Cargo, passe os argumentos depois de `--`:
 
