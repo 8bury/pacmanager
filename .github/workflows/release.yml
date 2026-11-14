@@ -1,0 +1,99 @@
+name: Release
+
+# Só roda manualmente: Actions → Release → Run workflow.
+# Antes, atualize `version` no Cargo.toml e a seção correspondente do CHANGELOG.md.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Como criar a release
+        type: choice
+        options:
+          - rascunho
+          - publicada
+        default: rascunho
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versão e changelog
+        id: version
+        run: |
+          version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::A versão $version já existe. Atualize version no Cargo.toml e o CHANGELOG.md."
+            exit 1
+          fi
+          awk -v v="$version" '/^## / { found = ($2 == v); next } found' CHANGELOG.md > changes.md
+          if ! grep -q '[^[:space:]]' changes.md; then
+            echo "::error::CHANGELOG.md não tem a seção ## $version."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Dependências
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev libxi-dev libxcursor-dev libxrandr-dev
+      - uses: dtolnay/rust-toolchain@1.98.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verificações
+        run: |
+          cargo fmt --check
+          cargo test --locked
+          cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Compilar e empacotar
+        run: |
+          cargo build --locked --release
+          sh scripts/package-release.sh
+          (cd target/dist && sha256sum --check SHA256SUMS)
+
+      - name: Criar release
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          MODE: ${{ inputs.release }}
+        run: |
+          archive="pacmanager-$TAG-linux-x86_64"
+          {
+            cat changes.md
+            cat <<EOF
+
+          ## Instalação ou atualização
+
+          Baixe o pacote e \`SHA256SUMS\` para a mesma pasta:
+
+          \`\`\`sh
+          sha256sum --check SHA256SUMS
+          tar -xzf $archive.tar.gz
+          cd $archive
+          ./install.sh
+          \`\`\`
+
+          Execute como seu usuário normal. O instalador usa Python 3 e atualiza os arquivos de uma instalação anterior, incluindo o ícone. Para experimentar a interface, execute \`~/.local/bin/pacmanager --demo\`.
+
+          Binário para Linux x86_64 com glibc, compilado pelo GitHub Actions no Ubuntu 24.04. Os requisitos de pacman, OpenGL, terminal e yay para o AUR estão no [README](https://github.com/${{ github.repository }}#readme).
+          EOF
+          } > notes.md
+          draft=()
+          if [ "$MODE" = rascunho ]; then draft=(--draft); fi
+          gh release create "$TAG" "target/dist/$archive.tar.gz" target/dist/SHA256SUMS \
+            "${draft[@]}" --target "$GITHUB_SHA" --title "PacManager $TAG" --notes-file notes.md
+          echo "Release $TAG criada ($MODE)." >> "$GITHUB_STEP_SUMMARY"

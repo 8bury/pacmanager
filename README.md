@@ -129,6 +129,10 @@ cargo test --locked --test aur_search -- --ignored
 
 `pacmanager --check` consulta o backend e o catálogo do sistema sem instalar, remover ou atualizar pacotes.
 
+### Lançar uma versão
+
+As releases são compiladas pelo GitHub Actions e só quando acionadas manualmente. Atualize `version` no `Cargo.toml` e adicione a seção `## X.Y.Z · data` ao `CHANGELOG.md`, envie o commit e abra **Actions → Release → Run workflow**. A opção **rascunho** (padrão) cria a release `vX.Y.Z` como rascunho, com o pacote, `SHA256SUMS` e as notas tiradas do changelog, para revisar e publicar pela página de releases. **publicada** publica direto. O workflow falha se a versão já tiver release ou tag.
+
 ### Janelas fora da área de trabalho
 
 Capturas e testes com janela rodam numa sessão sway headless, para não abrir janelas nem roubar o foco no desktop. Instale `sway` e `grim` (e `gdb` para o teste de travamento):
