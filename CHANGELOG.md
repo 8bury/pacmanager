@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 · 2026-11-16
+
+- O Explorar abre em cerca de 1 segundo, em vez de 15: o catálogo não passa mais pela ordenação da busca, que era refeita a cada comparação.
+- Instalados e buscas carregam em cerca de metade do tempo, com as consultas ao pacman em paralelo.
+
 ## 0.2.1 · 2026-11-16
 
 - Atualizar tudo e as operações do AUR pedem a senha do sudo só no início e a mantêm válida durante a compilação dos pacotes, sem um segundo pedido que expirava enquanto ninguém olhava o terminal.
