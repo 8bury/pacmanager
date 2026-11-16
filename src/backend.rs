@@ -232,11 +232,24 @@ fn parse_info(text: &str) -> Vec<Package> {
     }
     out
 }
+fn join<T>(handle: std::thread::ScopedJoinHandle<'_, Result<T, String>>) -> Result<T, String> {
+    handle
+        .join()
+        .unwrap_or_else(|_| Err("Consulta ao pacman falhou".into()))
+}
 pub fn installed() -> Result<Vec<Package>, String> {
-    let mut packages = parse_info(&output("pacman", &["-Qi"])?);
-    let apps = app_names(&output("pacman", &["-Ql"])?);
+    // These queries are independent and each takes about half a second.
+    let (info, files, sync, foreign) = std::thread::scope(|scope| {
+        let info = scope.spawn(|| output("pacman", &["-Qi"]));
+        let files = scope.spawn(|| output("pacman", &["-Ql"]).map(|f| app_names(&f)));
+        let sync = scope.spawn(|| output("pacman", &["-Sl"]));
+        let foreign = update_output("pacman", &["-Qmq"]);
+        (join(info), join(files), join(sync), foreign)
+    });
+    let mut packages = parse_info(&info?);
+    let apps = files?;
     let mut repositories = HashMap::<String, String>::new();
-    for line in output("pacman", &["-Sl"])?.lines() {
+    for line in sync?.lines() {
         let mut f = line.split_whitespace();
         if let (Some(repo), Some(name)) = (f.next(), f.next()) {
             repositories
@@ -244,10 +257,7 @@ pub fn installed() -> Result<Vec<Package>, String> {
                 .or_insert_with(|| repo.into());
         }
     }
-    let foreign: HashSet<_> = update_output("pacman", &["-Qmq"])?
-        .lines()
-        .map(str::to_owned)
-        .collect();
+    let foreign: HashSet<_> = foreign?.lines().map(str::to_owned).collect();
     let icons = crate::icons::IconResolver::new();
     for p in &mut packages {
         p.icon_path = apps
@@ -379,6 +389,16 @@ pub fn search_with_warnings(
     query: &str,
     include_aur: bool,
 ) -> Result<(Vec<Package>, Option<String>), String> {
+    let (mut packages, warning) = search_unranked(query, include_aur)?;
+    crate::search::rank_results(&mut packages, query.trim(), None);
+    Ok((packages, warning))
+}
+/// The catalog matches names with a long regex and sorts by popularity itself,
+/// so it skips text relevance ranking, which treats the query as plain text.
+pub(crate) fn search_unranked(
+    query: &str,
+    include_aur: bool,
+) -> Result<(Vec<Package>, Option<String>), String> {
     let query = query.trim();
     if query.is_empty() {
         return Ok((Vec::new(), None));
@@ -386,7 +406,13 @@ pub fn search_with_warnings(
     if query.starts_with('-') || query.chars().any(char::is_control) {
         return Err("Pesquisa inválida".into());
     }
-    let o = run("pacman", &["-Ss", query])?;
+    // Installed versions are needed for every result, so load them alongside the search.
+    let (o, local) = std::thread::scope(|scope| {
+        let local = scope.spawn(installed);
+        let o = run("pacman", &["-Ss", query]);
+        (o, join(local))
+    });
+    let o = o?;
     if !o.status.success() && !(o.status.code() == Some(1) && o.stderr.is_empty()) {
         return Err(String::from_utf8_lossy(&o.stderr).into_owned());
     }
@@ -398,7 +424,7 @@ pub fn search_with_warnings(
             Err(error) => warning = Some(error),
         }
     }
-    let local = installed()?;
+    let local = local?;
     let versions: HashMap<_, _> = local.iter().map(|p| (p.name.as_str(), p)).collect();
     let mut seen = HashSet::new();
     packages.retain(|p| seen.insert((p.name.clone(), format!("{:?}", p.source))));
@@ -412,7 +438,6 @@ pub fn search_with_warnings(
             p.icon_path = local.icon_path.clone().or_else(|| p.icon_path.clone());
         }
     }
-    crate::search::rank_results(&mut packages, query, None);
     Ok((packages, warning))
 }
 

@@ -71,12 +71,15 @@ pub fn rank_results(packages: &mut [Package], query: &str, catalog: Option<&Cata
     if query.is_empty() {
         return;
     }
-    packages.sort_by(|a, b| {
-        let (ar, aa, ap) = relevance(a, &query, catalog);
-        let (br, ba, bp) = relevance(b, &query, catalog);
-        br.cmp(&ar)
-            .then_with(|| ba.cmp(&aa))
-            .then_with(|| bp.total_cmp(&ap))
+    // Relevance lowercases names and descriptions, so compute it once per package.
+    let mut ranked: Vec<_> = packages
+        .iter()
+        .map(|p| (relevance(p, &query, catalog), p.clone()))
+        .collect();
+    ranked.sort_by(|((ar, aa, ap), a), ((br, ba, bp), b)| {
+        br.cmp(ar)
+            .then_with(|| ba.cmp(aa))
+            .then_with(|| bp.total_cmp(ap))
             .then_with(|| source_order(&b.source).cmp(&source_order(&a.source)))
             .then_with(|| {
                 if a.source != Source::Aur || b.source != Source::Aur {
@@ -94,6 +97,9 @@ pub fn rank_results(packages: &mut [Package], query: &str, catalog: Option<&Cata
                 _ => Ordering::Equal,
             })
     });
+    for (slot, (_, package)) in packages.iter_mut().zip(ranked) {
+        *slot = package;
+    }
 }
 
 #[cfg(test)]

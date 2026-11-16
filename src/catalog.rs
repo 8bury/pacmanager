@@ -308,6 +308,13 @@ fn parse_popularity(bytes: &[u8]) -> Result<HashMap<String, f64>, String> {
     }
     Ok(map)
 }
+fn names_search(batch: &[String]) -> Result<Vec<Package>, String> {
+    let (packages, warning) = backend::search_unranked(&format!("^({})$", batch.join("|")), false)?;
+    match warning {
+        Some(warning) => Err(warning),
+        None => Ok(packages),
+    }
+}
 pub fn load() -> Result<Catalog, String> {
     let mut warnings = Vec::new();
     let mut components = local_components(&mut warnings);
@@ -355,7 +362,7 @@ pub fn load() -> Result<Catalog, String> {
             })
             .collect();
         if length + escaped.len() + 1 > 32 * 1024 && !batch.is_empty() {
-            packages.extend(backend::search(&format!("^({})$", batch.join("|")), false)?);
+            packages.extend(names_search(&batch)?);
             batch.clear();
             length = 4;
         }
@@ -363,7 +370,7 @@ pub fn load() -> Result<Catalog, String> {
         batch.push(escaped);
     }
     if !batch.is_empty() {
-        packages.extend(backend::search(&format!("^({})$", batch.join("|")), false)?);
+        packages.extend(names_search(&batch)?);
     }
     let mut metadata = HashMap::new();
     packages.retain_mut(|p| {
