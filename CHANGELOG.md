@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 · 2026-11-16
+
+- Atualizar tudo e as operações do AUR pedem a senha do sudo só no início e a mantêm válida durante a compilação dos pacotes, sem um segundo pedido que expirava enquanto ninguém olhava o terminal.
+
 ## 0.2.0 · 2026-11-14
 
 - Cabeçalhos de página com título grande, contagem e ações alinhadas à direita.
