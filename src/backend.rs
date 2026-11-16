@@ -500,7 +500,7 @@ fn operation_command(op: &Operation) -> Result<(String, Vec<String>), String> {
         Operation::SyncRepositories => Ok(("sudo".into(), vec!["pacman".into(), "-Sy".into()])),
         Operation::Upgrade => {
             if available("yay") {
-                Ok(("yay".into(), vec!["-Syu".into()]))
+                Ok(("yay".into(), vec!["-Syu".into(), "--sudoloop".into()]))
             } else {
                 Ok(("sudo".into(), vec!["pacman".into(), "-Syu".into()]))
             }
@@ -520,6 +520,7 @@ fn operation_command(op: &Operation) -> Result<(String, Vec<String>), String> {
                             "-S".into(),
                             "--aur".into(),
                             "--needed".into(),
+                            "--sudoloop".into(),
                             p.name.clone(),
                         ],
                     )),
@@ -547,7 +548,12 @@ fn operation_command(op: &Operation) -> Result<(String, Vec<String>), String> {
                 }
                 _ if p.source == Source::Aur => Ok((
                     "yay".into(),
-                    vec!["-S".into(), "--aur".into(), p.name.clone()],
+                    vec![
+                        "-S".into(),
+                        "--aur".into(),
+                        "--sudoloop".into(),
+                        p.name.clone(),
+                    ],
                 )),
                 _ => Ok((
                     "sudo".into(),
@@ -824,7 +830,12 @@ mod tests {
             operation_command(&Operation::Install(p.clone())).unwrap(),
             (
                 "yay".into(),
-                vec!["-S".into(), "--aur".into(), "firefox".into()]
+                vec![
+                    "-S".into(),
+                    "--aur".into(),
+                    "--sudoloop".into(),
+                    "firefox".into()
+                ]
             )
         );
         p.name = "--noconfirm".into();
@@ -855,6 +866,7 @@ mod tests {
                     "-S".into(),
                     "--aur".into(),
                     "--needed".into(),
+                    "--sudoloop".into(),
                     "firefox".into()
                 ]
             )
